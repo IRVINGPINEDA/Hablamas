@@ -1,0 +1,9 @@
+caleiro.online {
+    encode zstd gzip
+
+    reverse_proxy /api/* api:8080
+    reverse_proxy /hubs/* api:8080
+    reverse_proxy /uploads/* api:8080
+
+    reverse_proxy web:80
+}

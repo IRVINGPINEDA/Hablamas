@@ -1,0 +1,71 @@
+export type ChatMessageType = "text" | "image";
+
+export interface AuthUser {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  publicAlias: string;
+  publicCode: string;
+  emailConfirmed: boolean;
+  mustChangePassword: boolean;
+  profileImageUrl?: string;
+  roles: string[];
+}
+
+export interface AuthPayload {
+  accessToken: string;
+  refreshToken: string;
+  mustChangePassword: boolean;
+  emailConfirmed: boolean;
+  userId: string;
+  email: string;
+  publicAlias: string;
+  roles: string[];
+}
+
+export interface ConversationSummary {
+  id: string;
+  createdAt: string;
+  lastMessageAt?: string;
+  contact: {
+    id: string;
+    publicAlias: string;
+    alias?: string;
+    publicCode: string;
+    profileImageUrl?: string;
+  };
+  lastMessage?: {
+    id: string;
+    text?: string;
+    type: ChatMessageType;
+    imageUrl?: string;
+    senderId: string;
+    createdAt: string;
+  };
+}
+
+export interface MessageDto {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  senderAlias: string;
+  text?: string;
+  type: ChatMessageType;
+  imageUrl?: string;
+  createdAt: string;
+  status: "Sent" | "Delivered" | "Seen";
+}
+
+export interface ContactDto {
+  id: string;
+  alias?: string;
+  contactUser: {
+    id: string;
+    publicAlias: string;
+    publicCode: string;
+    profileImageUrl?: string;
+    bio?: string;
+    emailConfirmed: boolean;
+  };
+}

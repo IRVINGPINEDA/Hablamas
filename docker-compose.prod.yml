@@ -1,0 +1,78 @@
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: hablamas
+      POSTGRES_USER: habla
+      POSTGRES_PASSWORD: hablapw
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      ConnectionStrings__Default: ${ConnectionStrings__Default}
+      Redis__ConnectionString: ${Redis__ConnectionString}
+      APP_BASE_URL: ${APP_BASE_URL}
+      JWT__Issuer: ${JWT__Issuer}
+      JWT__Audience: ${JWT__Audience}
+      JWT__Key: ${JWT__Key}
+      SMTP__Host: ${SMTP__Host}
+      SMTP__Port: ${SMTP__Port}
+      SMTP__User: ${SMTP__User}
+      SMTP__Pass: ${SMTP__Pass}
+      SMTP__From: ${SMTP__From}
+      UPLOADS__Path: ${UPLOADS__Path}
+      UPLOADS__MaxMb: ${UPLOADS__MaxMb}
+      OPENAI__ApiKey: ${OPENAI__ApiKey}
+      OPENAI__Model: ${OPENAI__Model}
+      ADMIN__SeedEmail: ${ADMIN__SeedEmail}
+      ADMIN__SeedPassword: ${ADMIN__SeedPassword}
+    depends_on:
+      - db
+      - redis
+    volumes:
+      - uploads:${UPLOADS__Path}
+
+  web:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: prod
+      args:
+        VITE_API_BASE_URL: /api
+        VITE_HUB_URL: /hubs/chat
+    restart: unless-stopped
+    depends_on:
+      - api
+
+  caddy:
+    image: caddy:2.8-alpine
+    restart: unless-stopped
+    depends_on:
+      - api
+      - web
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./reverse-proxy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+volumes:
+  pgdata:
+  uploads:
+  caddy_data:
+  caddy_config:

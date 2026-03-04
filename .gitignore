@@ -1,0 +1,18 @@
+# Global
+.env
+*.log
+
+# .NET
+**/bin/
+**/obj/
+
+# Node
+**/node_modules/
+frontend/dist/
+
+# Uploads / data
+uploads/
+
+# IDE
+.vscode/
+.idea/

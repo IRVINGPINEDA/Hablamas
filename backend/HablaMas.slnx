@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/HablaMas.Api/HablaMas.Api.csproj" />
+    <Project Path="src/HablaMas.Application/HablaMas.Application.csproj" />
+    <Project Path="src/HablaMas.Domain/HablaMas.Domain.csproj" />
+    <Project Path="src/HablaMas.Infrastructure/HablaMas.Infrastructure.csproj" />
+  </Folder>
+</Solution>
