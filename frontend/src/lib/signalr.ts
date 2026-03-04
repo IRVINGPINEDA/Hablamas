@@ -13,6 +13,6 @@ export function createChatConnection(): HubConnection {
       accessTokenFactory: () => getAccessToken() || ""
     })
     .withAutomaticReconnect()
-    .configureLogging(LogLevel.Warning)
+    .configureLogging(LogLevel.None)
     .build();
 }

@@ -50,6 +50,7 @@ export function AppPage( ) {
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
   const connectionRef = useRef<HubConnection | null>(null);
+  const contactsRef = useRef<ContactDto[]>([]);
 
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
@@ -64,6 +65,10 @@ export function AppPage( ) {
   useEffect(() => {
     selectedConversationRef.current = selectedConversationId;
   }, [selectedConversationId]);
+
+  useEffect(() => {
+    contactsRef.current = contacts;
+  }, [contacts]);
 
   const loadSidebar = async (): Promise<void> => {
     const [chatsResponse, contactsResponse] = await Promise.all([
@@ -246,7 +251,7 @@ export function AppPage( ) {
         return;
       }
 
-      const contact = contacts.find((item) => item.contactUser.id === payload.userId);
+      const contact = contactsRef.current.find((item) => item.contactUser.id === payload.userId);
       setTypingByConversation((prev) => ({
         ...prev,
         [payload.conversationId]: contact?.alias || contact?.contactUser.publicAlias || "Escribiendo"
@@ -268,7 +273,11 @@ export function AppPage( ) {
         if (selectedConversationRef.current) {
           await connection.invoke("JoinConversation", selectedConversationRef.current);
         }
-      } catch {
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : "";
+        if (message.includes("before stop() was called")) {
+          return;
+        }
         setStatusText("No fue posible iniciar mensajeria en tiempo real.");
       }
     };
@@ -278,10 +287,12 @@ export function AppPage( ) {
     });
 
     return () => {
-      connection.stop().catch(() => undefined);
+      if (connection.state !== HubConnectionState.Disconnected) {
+        connection.stop().catch(() => undefined);
+      }
       setConnectionState(HubConnectionState.Disconnected);
     };
-  }, [user, contacts]);
+  }, [user]);
 
   useEffect(() => {
     const connection = connectionRef.current;

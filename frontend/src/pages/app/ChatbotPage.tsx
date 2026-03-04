@@ -43,6 +43,10 @@ function extractApiError(error: unknown): string {
     return "No fue posible obtener respuesta del chatbot.";
   }
 
+  if (error.response?.status === 429) {
+    return "Se alcanzo el limite de solicitudes/cuota del chatbot. Revisa tu plan de OpenAI y vuelve a intentar.";
+  }
+
   const data = error.response?.data as ApiProblemResponse | undefined;
   return data?.detail ?? data?.title ?? "No fue posible obtener respuesta del chatbot.";
 }
