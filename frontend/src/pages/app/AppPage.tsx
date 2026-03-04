@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
+import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
 import { createChatConnection } from "../../lib/signalr";
@@ -487,20 +488,20 @@ export function AppPage( ) {
           </p>
         </header>
 
-        <section className="flex-1 space-y-3 overflow-y-auto p-5">
+        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {messages.map((message) => {
             const own = message.senderId === user?.id;
             return (
-              <div key={message.id} className={clsx("max-w-[78%] rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+              <div key={message.id} className={clsx("max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
                 {message.type === "image" ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
                     <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
                   </a>
                 ) : (
-                  <p>{message.text}</p>
+                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
                 )}
                 <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
-                  {new Date(message.createdAt).toLocaleTimeString()} {own ? `· ${message.status}` : ""}
+                  {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
                 </p>
               </div>
             );
@@ -530,18 +531,18 @@ export function AppPage( ) {
           </p>
         </header>
 
-        <section className="flex-1 space-y-3 overflow-y-auto p-5">
+        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
             return (
-              <div key={message.id} className={clsx("max-w-[82%] rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+              <div key={message.id} className={clsx("max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
                 {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">{message.senderAlias}</p> : null}
                 {message.type === "image" ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
                     <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
                   </a>
                 ) : (
-                  <p>{message.text}</p>
+                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
                 )}
                 <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()}
@@ -562,13 +563,13 @@ export function AppPage( ) {
             <button
               key={conversation.id}
               className={clsx(
-                "w-full rounded-xl border px-3 py-3 text-left",
+                "w-full rounded-xl border px-4 py-3 text-left",
                 selectedConversationId === conversation.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
               )}
               onClick={() => setSelectedConversationId(conversation.id)}
             >
               <div className="flex items-center justify-between gap-2">
-                <p className="font-medium text-slate-900">{conversation.contact.alias || conversation.contact.publicAlias}</p>
+                <p className="text-[15px] font-medium text-slate-900">{conversation.contact.alias || conversation.contact.publicAlias}</p>
                 <span className={clsx("h-2.5 w-2.5 rounded-full", presenceByUser[conversation.contact.id] ? "bg-emerald-500" : "bg-slate-300")} />
               </div>
               {conversation.lastMessage ? (
@@ -622,13 +623,13 @@ export function AppPage( ) {
               <button
                 key={group.id}
                 className={clsx(
-                  "w-full rounded-xl border px-3 py-3 text-left",
+                  "w-full rounded-xl border px-4 py-3 text-left",
                   selectedGroupId === group.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
                 )}
                 onClick={() => setSelectedGroupId(group.id)}
               >
                 <div className="flex items-center justify-between gap-2">
-                  <p className="font-medium text-slate-900">{group.name}</p>
+                  <p className="text-[15px] font-medium text-slate-900">{group.name}</p>
                   <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] text-indigo-700">{group.memberCount}</span>
                 </div>
                 {group.lastMessage ? (
@@ -705,49 +706,53 @@ export function AppPage( ) {
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-4 lg:p-7">
-      <div className="mx-auto max-w-7xl overflow-hidden rounded-[30px] border border-indigo-100 bg-white shadow-2xl">
-        <div className="flex min-h-[82vh]">
-          <aside className="hidden w-16 flex-col items-center justify-between bg-indigo-600 py-5 text-indigo-100 md:flex">
-            <div className="space-y-2">
-              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "chats" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("chats")}>CH</button>
-              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "groups" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("groups")}>GR</button>
-              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "contacts" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("contacts")}>CT</button>
-              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "profile" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("profile")}>PF</button>
-            </div>
-            <button className="w-10 rounded-lg bg-indigo-500 py-2 text-xs font-semibold" onClick={() => logout().catch(() => undefined)}>OUT</button>
-          </aside>
-
-          <aside className="w-full max-w-sm border-r border-slate-200 bg-slate-50 p-4">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-4 lg:p-9">
+      <div className="mx-auto max-w-[1700px] overflow-hidden rounded-[30px] border border-indigo-100 bg-white shadow-2xl">
+        <div className="flex h-[88vh] flex-col lg:flex-row">
+          <aside className="w-full border-b border-slate-200 bg-slate-50 p-5 lg:flex lg:w-[430px] lg:flex-col lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-xl font-semibold text-slate-900">Habla Mas</h1>
-                <p className="text-xs text-slate-500">{user?.publicAlias} ({user?.publicCode})</p>
+                <h1 className="text-2xl font-semibold text-slate-900">Habla Mas</h1>
+                <p className="text-sm text-slate-500">{user?.publicAlias} ({user?.publicCode})</p>
               </div>
-              <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-700 md:hidden" onClick={() => logout().catch(() => undefined)}>
+              <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={() => logout().catch(() => undefined)}>
                 Salir
               </button>
             </div>
-            {renderSidebarContent()}
+
+            <nav className="mt-4 grid grid-cols-2 gap-2">
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "chats" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("chats")}>Chats</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "groups" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("groups")}>Grupos</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "contacts" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("contacts")}>Contactos</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "profile" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("profile")}>Perfil</button>
+            </nav>
+
+            <Link className="mt-2 block rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-center text-sm font-semibold text-indigo-700" to="/chatbot">
+              Chatbot IA
+            </Link>
+
+            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              {renderSidebarContent()}
+            </div>
           </aside>
 
-          <main className="flex min-h-[75vh] flex-1 flex-col bg-white">
+          <main className="flex min-h-0 flex-1 flex-col bg-white">
             {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : (
               <div className="m-auto text-center text-slate-500">
-                <p className="text-lg font-medium">{panel === "contacts" ? "Gestiona tus contactos" : "Perfil de usuario"}</p>
-                <p className="text-sm">{panel === "contacts" ? "Agrega por codigo, cambia alias y crea grupos." : "Personaliza tu cuenta y apariencia."}</p>
+                <p className="text-xl font-medium">{panel === "contacts" ? "Gestiona tus contactos" : "Perfil de usuario"}</p>
+                <p className="text-base">{panel === "contacts" ? "Agrega por codigo, cambia alias y crea grupos." : "Personaliza tu cuenta y apariencia."}</p>
               </div>
             )}
 
             {(panel === "chats" || panel === "groups") ? (
-              <footer className="border-t border-slate-200 p-4">
-                <form className="flex items-center gap-2" onSubmit={(event) => {
+              <footer className="border-t border-slate-200 p-5">
+                <form className="flex items-center gap-3" onSubmit={(event) => {
                   sendText(event).catch(() => {
                     setStatusText("No fue posible enviar el mensaje.");
                   });
                 }}>
                   <input
-                    className="w-full rounded-xl border border-slate-300 px-4 py-2"
+                    className="w-full rounded-xl border border-slate-300 px-4 py-3 text-base"
                     placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
                     value={messageInput}
                     onChange={(event) => {
@@ -757,7 +762,7 @@ export function AppPage( ) {
                       }
                     }}
                   />
-                  <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-600">
+                  <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-600">
                     Foto
                     <input className="hidden" accept="image/png,image/jpeg,image/webp" type="file" onChange={(event) => {
                       sendImage(event).catch(() => {
@@ -765,7 +770,7 @@ export function AppPage( ) {
                       });
                     }} />
                   </label>
-                  <button className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold text-white" type="submit">Enviar</button>
+                  <button className="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white" type="submit">Enviar</button>
                 </form>
               </footer>
             ) : null}
@@ -773,7 +778,7 @@ export function AppPage( ) {
         </div>
       </div>
 
-      {statusText ? <div className="mx-auto mt-4 max-w-7xl rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
+      {statusText ? <div className="mx-auto mt-4 max-w-[1700px] rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
     </div>
   );
 }

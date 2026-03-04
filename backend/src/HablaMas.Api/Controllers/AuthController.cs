@@ -57,6 +57,31 @@ public sealed class AuthController : ControllerBase
         var existing = await _userManager.FindByEmailAsync(email);
         if (existing is not null)
         {
+            if (!existing.EmailConfirmed)
+            {
+                var verificationToken = await _userManager.GenerateEmailConfirmationTokenAsync(existing);
+                var verificationEncodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(verificationToken));
+                var verificationUrl = BuildAbsoluteUrl($"/verify-email?userId={existing.Id}&token={verificationEncodedToken}");
+
+                try
+                {
+                    await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", $"<p>Tu cuenta ya existe y esta pendiente de verificacion.</p><p>Verifica tu correo aqui: <a href='{verificationUrl}'>{verificationUrl}</a></p>");
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to resend verification email during register for existing user {UserId}", existing.Id);
+                }
+
+                return Ok(new
+                {
+                    message = "Email already registered but pending verification. Verification email was resent.",
+                    email,
+                    publicCode = existing.PublicCode,
+                    alreadyRegistered = true,
+                    emailConfirmed = false
+                });
+            }
+
             return Conflict(new ProblemDetails
             {
                 Title = "Email already registered",
