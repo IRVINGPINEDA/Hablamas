@@ -69,3 +69,38 @@ export interface ContactDto {
     emailConfirmed: boolean;
   };
 }
+
+export interface GroupChatSummary {
+  id: string;
+  name: string;
+  createdAt: string;
+  lastMessageAt?: string;
+  memberCount: number;
+  lastMessage?: {
+    id: string;
+    text?: string;
+    type: ChatMessageType;
+    imageUrl?: string;
+    senderId: string;
+    createdAt: string;
+  };
+}
+
+export interface GroupMemberDto {
+  id: string;
+  publicAlias: string;
+  publicCode: string;
+  profileImageUrl?: string;
+  joinedAt: string;
+}
+
+export interface GroupMessageDto {
+  id: string;
+  groupChatId: string;
+  senderId: string;
+  senderAlias: string;
+  text?: string;
+  type: ChatMessageType;
+  imageUrl?: string;
+  createdAt: string;
+}

@@ -15,6 +15,9 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
     public DbSet<Conversation> Conversations => Set<Conversation>();
     public DbSet<Message> Messages => Set<Message>();
     public DbSet<MessageStatus> MessageStatuses => Set<MessageStatus>();
+    public DbSet<GroupChat> GroupChats => Set<GroupChat>();
+    public DbSet<GroupChatMember> GroupChatMembers => Set<GroupChatMember>();
+    public DbSet<GroupChatMessage> GroupChatMessages => Set<GroupChatMessage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
@@ -88,6 +91,46 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.HasOne(x => x.Recipient)
                 .WithMany()
                 .HasForeignKey(x => x.RecipientId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<GroupChat>(entity =>
+        {
+            entity.Property(x => x.Name).HasMaxLength(120);
+            entity.HasIndex(x => x.CreatedAt);
+            entity.HasOne(x => x.OwnerUser)
+                .WithMany(x => x.OwnedGroupChats)
+                .HasForeignKey(x => x.OwnerUserId)
+                .OnDelete(DeleteBehavior.Restrict);
+        });
+
+        builder.Entity<GroupChatMember>(entity =>
+        {
+            entity.HasKey(x => new { x.GroupChatId, x.UserId });
+            entity.HasIndex(x => x.UserId);
+            entity.HasOne(x => x.GroupChat)
+                .WithMany(x => x.Members)
+                .HasForeignKey(x => x.GroupChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.GroupChatMemberships)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<GroupChatMessage>(entity =>
+        {
+            entity.HasIndex(x => new { x.GroupChatId, x.CreatedAt });
+            entity.Property(x => x.Text).HasMaxLength(4000);
+            entity.Property(x => x.ImageUrl).HasMaxLength(500);
+            entity.Property(x => x.ClientMessageId).HasMaxLength(120);
+            entity.HasOne(x => x.GroupChat)
+                .WithMany(x => x.Messages)
+                .HasForeignKey(x => x.GroupChatId)
+                .OnDelete(DeleteBehavior.Cascade);
+            entity.HasOne(x => x.Sender)
+                .WithMany()
+                .HasForeignKey(x => x.SenderId)
                 .OnDelete(DeleteBehavior.Restrict);
         });
 

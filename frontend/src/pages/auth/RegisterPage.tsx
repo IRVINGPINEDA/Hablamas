@@ -1,7 +1,28 @@
 import { useState } from "react";
+import axios from "axios";
 import { Link } from "react-router-dom";
 import { authApi } from "../../lib/api";
 import { AuthCard } from "../../components/AuthCard";
+
+interface ApiProblemResponse {
+  title?: string;
+  detail?: string;
+  errors?: Record<string, string[]>;
+}
+
+function extractApiError(error: unknown): string {
+  if (!axios.isAxiosError(error)) {
+    return "No fue posible registrar el usuario.";
+  }
+
+  const data = error.response?.data as ApiProblemResponse | undefined;
+  const fieldErrors = data?.errors ? Object.values(data.errors).flat().filter(Boolean) : [];
+  if (fieldErrors.length > 0) {
+    return fieldErrors.join(" ");
+  }
+
+  return data?.detail ?? data?.title ?? "No fue posible registrar el usuario.";
+}
 
 export function RegisterPage( ) {
   const [form, setForm] = useState({
@@ -26,7 +47,7 @@ export function RegisterPage( ) {
       const response = await authApi.post("/auth/register", form);
       setMessage(`Cuenta creada para ${response.data.email}. Revisa tu correo para la contrasena temporal y verificaci\u00f3n.`);
     } catch (requestError: unknown) {
-      setError("No fue posible registrar el usuario.");
+      setError(extractApiError(requestError));
     } finally {
       setSaving(false);
     }

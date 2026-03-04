@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import axios from "axios";
 import { useParams } from "react-router-dom";
 import { authApi } from "../../lib/api";
 
@@ -18,6 +19,26 @@ interface UserDetail {
   createdAt: string;
   lastLoginAt?: string;
   roles: string[];
+}
+
+interface ApiProblemResponse {
+  title?: string;
+  detail?: string;
+  errors?: Record<string, string[]>;
+}
+
+function extractApiError(error: unknown): string {
+  if (!axios.isAxiosError(error)) {
+    return "Error inesperado.";
+  }
+
+  const data = error.response?.data as ApiProblemResponse | undefined;
+  const fieldErrors = data?.errors ? Object.values(data.errors).flat().filter(Boolean) : [];
+  if (fieldErrors.length > 0) {
+    return fieldErrors.join(" ");
+  }
+
+  return data?.detail ?? data?.title ?? `Error ${error.response?.status ?? ""}`.trim();
 }
 
 export function AdminUserDetailPage( ) {
@@ -97,14 +118,14 @@ export function AdminUserDetailPage( ) {
           <p><strong>Roles:</strong> {user.roles.join(", ")}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {user.isBlocked ? (
-              <button className="rounded bg-emerald-600 px-3 py-2 text-xs text-white" onClick={() => action("unblock").catch(() => setStatus("Error al desbloquear"))}>Desbloquear</button>
+              <button className="rounded bg-emerald-600 px-3 py-2 text-xs text-white" onClick={() => action("unblock").catch((error: unknown) => setStatus(extractApiError(error)))}>Desbloquear</button>
             ) : (
-              <button className="rounded bg-rose-600 px-3 py-2 text-xs text-white" onClick={() => action("block").catch(() => setStatus("Error al bloquear"))}>Bloquear</button>
+              <button className="rounded bg-rose-600 px-3 py-2 text-xs text-white" onClick={() => action("block").catch((error: unknown) => setStatus(extractApiError(error)))}>Bloquear</button>
             )}
-            <button className="rounded bg-slate-900 px-3 py-2 text-xs text-white" onClick={() => forceResetPassword().catch(() => setStatus("Error en reset"))}>Generar temporal</button>
-            <button className="rounded bg-amber-600 px-3 py-2 text-xs text-white" onClick={() => action("resend-verification").catch(() => setStatus("Error reenvio"))}>Reenviar verificacion</button>
-            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "User" }).catch(() => setStatus("Error rol"))}>Rol User</button>
-            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "Admin" }).catch(() => setStatus("Error rol"))}>Rol Admin</button>
+            <button className="rounded bg-slate-900 px-3 py-2 text-xs text-white" onClick={() => forceResetPassword().catch((error: unknown) => setStatus(extractApiError(error)))}>Generar temporal</button>
+            <button className="rounded bg-amber-600 px-3 py-2 text-xs text-white" onClick={() => action("resend-verification").catch((error: unknown) => setStatus(extractApiError(error)))}>Reenviar verificacion</button>
+            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "User" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol User</button>
+            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "Admin" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol Admin</button>
           </div>
 
           <label className="mt-3 flex items-center gap-2 text-xs">

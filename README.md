@@ -26,6 +26,10 @@ Habla Mas es una aplicacion de chat web (tipo WhatsApp) con:
   - preguntas y respuestas
   - soporte para codigo
   - soporte para analisis de imagenes
+- Grupos:
+  - crear grupos
+  - agregar miembros
+  - chat grupal (texto e imagen)
 - Perfil:
   - foto
   - bio
@@ -176,6 +180,14 @@ Chat:
 
 Chatbot:
 - `POST /api/chatbot/message`
+
+Grupos:
+- `GET /api/group-chats`
+- `POST /api/group-chats`
+- `GET /api/group-chats/{groupId}/members`
+- `POST /api/group-chats/{groupId}/members`
+- `GET /api/group-chats/{groupId}/messages?page=1&pageSize=50`
+- `POST /api/group-chats/{groupId}/messages`
 
 Uploads:
 - `POST /api/uploads/message-image`

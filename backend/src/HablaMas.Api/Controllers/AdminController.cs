@@ -23,6 +23,7 @@ public sealed class AdminController : ControllerBase
     private readonly IPasswordGenerator _passwordGenerator;
     private readonly IEmailService _emailService;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<AdminController> _logger;
 
     public AdminController(
         AppDbContext dbContext,
@@ -30,7 +31,8 @@ public sealed class AdminController : ControllerBase
         RoleManager<AppRole> roleManager,
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<AdminController> logger)
     {
         _dbContext = dbContext;
         _userManager = userManager;
@@ -38,6 +40,7 @@ public sealed class AdminController : ControllerBase
         _passwordGenerator = passwordGenerator;
         _emailService = emailService;
         _configuration = configuration;
+        _logger = logger;
     }
 
     [HttpGet]
@@ -176,23 +179,35 @@ public sealed class AdminController : ControllerBase
         user.MustChangePassword = true;
         await _userManager.UpdateAsync(user);
 
+        var emailFailed = false;
         if (sendEmail && !string.IsNullOrWhiteSpace(user.Email))
         {
-            await _emailService.SendAsync(
-                user.Email!,
-                "Habla Mas - Reset forzado",
-                $"<p>Tu nueva contrasena temporal es:</p><p><strong>{temporaryPassword}</strong></p><p>Debes cambiarla al iniciar sesion.</p>");
+            try
+            {
+                await _emailService.SendAsync(
+                    user.Email!,
+                    "Habla Mas - Reset forzado",
+                    $"<p>Tu nueva contrasena temporal es:</p><p><strong>{temporaryPassword}</strong></p><p>Debes cambiarla al iniciar sesion.</p>");
+            }
+            catch (Exception ex)
+            {
+                emailFailed = true;
+                _logger.LogError(ex, "Failed to send force-reset password email to user {UserId}", user.Id);
+            }
         }
 
-        await AuditAsync("force-reset-password", user.Id, new { sendEmail });
+        await AuditAsync("force-reset-password", user.Id, new { sendEmail, emailFailed });
 
         return Ok(new
         {
-            message = sendEmail
+            message = emailFailed
+                ? "Temporary password generated. Email delivery failed; share it manually."
+                : sendEmail
                 ? "Temporary password generated, shown once, and emailed."
                 : "Temporary password generated and shown once.",
             temporaryPassword,
-            sendEmail
+            sendEmail,
+            emailFailed
         });
     }
 
@@ -214,7 +229,20 @@ public sealed class AdminController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var verifyUrl = BuildAbsoluteUrl($"/verify-email?userId={user.Id}&token={encodedToken}");
 
-        await _emailService.SendAsync(user.Email!, "Habla Mas - Verificacion", $"<p>Verifica tu cuenta aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+        try
+        {
+            await _emailService.SendAsync(user.Email!, "Habla Mas - Verificacion", $"<p>Verifica tu cuenta aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resend verification email from admin for user {UserId}", user.Id);
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "Email delivery failed",
+                Detail = "No se pudo enviar el correo de verificacion."
+            });
+        }
+
         await AuditAsync("resend-verification", user.Id, new { });
 
         return Ok(new { message = "Verification email sent" });

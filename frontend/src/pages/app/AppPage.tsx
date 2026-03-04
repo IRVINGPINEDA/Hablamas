@@ -1,11 +1,17 @@
-﻿import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
-import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
 import { createChatConnection } from "../../lib/signalr";
-import type { ContactDto, ConversationSummary, MessageDto } from "../../types";
+import type {
+  ContactDto,
+  ConversationSummary,
+  GroupChatSummary,
+  GroupMemberDto,
+  GroupMessageDto,
+  MessageDto
+} from "../../types";
 
 interface ProfileForm {
   bio: string;
@@ -14,25 +20,31 @@ interface ProfileForm {
   accentColor: string;
 }
 
-type Panel = "chats" | "contacts" | "profile";
+type Panel = "chats" | "groups" | "contacts" | "profile";
 
 export function AppPage( ) {
   const { user, logout, refreshProfile } = useAuth();
   const [panel, setPanel] = useState<Panel>("chats");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [contacts, setContacts] = useState<ContactDto[]>([]);
+  const [groupChats, setGroupChats] = useState<GroupChatSummary[]>([]);
   const [selectedConversationId, setSelectedConversationId] = useState<string | null>(null);
+  const [selectedGroupId, setSelectedGroupId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageDto[]>([]);
+  const [groupMessages, setGroupMessages] = useState<GroupMessageDto[]>([]);
+  const [groupMembers, setGroupMembers] = useState<GroupMemberDto[]>([]);
   const [typingByConversation, setTypingByConversation] = useState<Record<string, string>>({});
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
   const [messageInput, setMessageInput] = useState("");
   const [connectionState, setConnectionState] = useState<HubConnectionState>(HubConnectionState.Disconnected);
   const [addingCode, setAddingCode] = useState("");
+  const [newGroupName, setNewGroupName] = useState("");
+  const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [profile, setProfile] = useState<ProfileForm>({
     bio: "",
     publicAlias: "",
     theme: 1,
-    accentColor: "#0ea5e9"
+    accentColor: "#6366f1"
   });
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
@@ -41,6 +53,11 @@ export function AppPage( ) {
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
     [conversations, selectedConversationId]
+  );
+
+  const currentGroup = useMemo(
+    () => groupChats.find((group) => group.id === selectedGroupId) ?? null,
+    [groupChats, selectedGroupId]
   );
 
   useEffect(() => {
@@ -64,18 +81,27 @@ export function AppPage( ) {
     }
   };
 
+  const loadGroups = async (): Promise<void> => {
+    const response = await authApi.get("/group-chats");
+    const groups = response.data as GroupChatSummary[];
+    setGroupChats(groups);
+    if (!selectedGroupId && groups.length > 0) {
+      setSelectedGroupId(groups[0].id);
+    }
+  };
+
   const loadProfile = async (): Promise<void> => {
     const response = await authApi.get("/profile/me");
     setProfile({
       bio: response.data.bio ?? "",
       publicAlias: response.data.publicAlias ?? "",
       theme: response.data.theme,
-      accentColor: response.data.accentColor ?? "#0ea5e9"
+      accentColor: response.data.accentColor ?? "#6366f1"
     });
   };
 
   const loadMessages = async (conversationId: string): Promise<void> => {
-    const response = await authApi.get(`/chats/${conversationId}/messages?page=1&pageSize=50`);
+    const response = await authApi.get(`/chats/${conversationId}/messages?page=1&pageSize=70`);
     const items = response.data.items as MessageDto[];
     setMessages(items);
 
@@ -89,16 +115,23 @@ export function AppPage( ) {
     }
   };
 
+  const loadGroupMessages = async (groupId: string): Promise<void> => {
+    const response = await authApi.get(`/group-chats/${groupId}/messages?page=1&pageSize=100`);
+    setGroupMessages(response.data.items as GroupMessageDto[]);
+  };
+
+  const loadGroupMembers = async (groupId: string): Promise<void> => {
+    const response = await authApi.get(`/group-chats/${groupId}/members`);
+    setGroupMembers(response.data as GroupMemberDto[]);
+  };
+
   useEffect(() => {
     if (!user) {
       return;
     }
 
-    loadSidebar().catch(() => {
-      setStatusText("No fue posible cargar chats y contactos.");
-    });
-    loadProfile().catch(() => {
-      setStatusText("No fue posible cargar el perfil.");
+    Promise.all([loadSidebar(), loadGroups(), loadProfile()]).catch(() => {
+      setStatusText("No fue posible cargar la aplicacion.");
     });
   }, [user]);
 
@@ -109,9 +142,34 @@ export function AppPage( ) {
     }
 
     loadMessages(selectedConversationId).catch(() => {
-      setStatusText("No fue posible cargar mensajes.");
+      setStatusText("No fue posible cargar mensajes privados.");
     });
   }, [selectedConversationId]);
+
+  useEffect(() => {
+    if (!selectedGroupId) {
+      setGroupMessages([]);
+      setGroupMembers([]);
+      return;
+    }
+
+    Promise.all([loadGroupMessages(selectedGroupId), loadGroupMembers(selectedGroupId)]).catch(() => {
+      setStatusText("No fue posible cargar el grupo.");
+    });
+  }, [selectedGroupId]);
+
+  useEffect(() => {
+    if (panel !== "groups" || !selectedGroupId) {
+      return;
+    }
+
+    const timer = window.setInterval(() => {
+      loadGroupMessages(selectedGroupId).catch(() => undefined);
+      loadGroups().catch(() => undefined);
+    }, 4000);
+
+    return () => window.clearInterval(timer);
+  }, [panel, selectedGroupId]);
 
   useEffect(() => {
     if (!user || !user.emailConfirmed || user.mustChangePassword) {
@@ -210,12 +268,12 @@ export function AppPage( ) {
           await connection.invoke("JoinConversation", selectedConversationRef.current);
         }
       } catch {
-        setStatusText("No fue posible iniciar SignalR.");
+        setStatusText("No fue posible iniciar mensajeria en tiempo real.");
       }
     };
 
     connect().catch(() => {
-      setStatusText("No fue posible iniciar SignalR.");
+      setStatusText("No fue posible iniciar mensajeria en tiempo real.");
     });
 
     return () => {
@@ -231,14 +289,12 @@ export function AppPage( ) {
     }
 
     connection.invoke("JoinConversation", selectedConversationId).catch(() => {
-      setStatusText("No se pudo unir a la conversacion.");
+      setStatusText("No se pudo unir a la conversacion privada.");
     });
   }, [selectedConversationId]);
 
-  const sendText = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
-    event.preventDefault();
-
-    if (!selectedConversationId || !messageInput.trim()) {
+  const sendDirectText = async (text: string): Promise<void> => {
+    if (!selectedConversationId) {
       return;
     }
 
@@ -248,14 +304,43 @@ export function AppPage( ) {
       return;
     }
 
-    const text = messageInput.trim();
-    setMessageInput("");
-
     await connection.invoke("SendText", selectedConversationId, crypto.randomUUID(), text);
   };
 
+  const sendGroupText = async (text: string): Promise<void> => {
+    if (!selectedGroupId) {
+      return;
+    }
+
+    await authApi.post(`/group-chats/${selectedGroupId}/messages`, {
+      type: "text",
+      text,
+      clientMessageId: crypto.randomUUID()
+    });
+
+    await Promise.all([loadGroupMessages(selectedGroupId), loadGroups()]);
+  };
+
+  const sendText = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+
+    if (!messageInput.trim()) {
+      return;
+    }
+
+    const text = messageInput.trim();
+    setMessageInput("");
+
+    if (panel === "groups") {
+      await sendGroupText(text);
+      return;
+    }
+
+    await sendDirectText(text);
+  };
+
   const sendTyping = async (isTyping: boolean): Promise<void> => {
-    if (!selectedConversationId) {
+    if (!selectedConversationId || panel !== "chats") {
       return;
     }
 
@@ -269,7 +354,7 @@ export function AppPage( ) {
 
   const sendImage = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
-    if (!file || !selectedConversationId) {
+    if (!file) {
       return;
     }
 
@@ -281,6 +366,24 @@ export function AppPage( ) {
         "Content-Type": "multipart/form-data"
       }
     });
+
+    if (panel === "groups") {
+      if (!selectedGroupId) {
+        return;
+      }
+
+      await authApi.post(`/group-chats/${selectedGroupId}/messages`, {
+        type: "image",
+        imageUrl: uploadResponse.data.url,
+        clientMessageId: crypto.randomUUID()
+      });
+      await Promise.all([loadGroupMessages(selectedGroupId), loadGroups()]);
+      return;
+    }
+
+    if (!selectedConversationId) {
+      return;
+    }
 
     const connection = connectionRef.current;
     if (!connection || connection.state !== HubConnectionState.Connected) {
@@ -309,6 +412,34 @@ export function AppPage( ) {
     await loadSidebar();
   };
 
+  const toggleGroupMember = (contactUserId: string): void => {
+    setSelectedGroupMemberIds((prev) =>
+      prev.includes(contactUserId)
+        ? prev.filter((id) => id !== contactUserId)
+        : [...prev, contactUserId]
+    );
+  };
+
+  const createGroup = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+    event.preventDefault();
+
+    if (!newGroupName.trim()) {
+      return;
+    }
+
+    const response = await authApi.post("/group-chats", {
+      name: newGroupName.trim(),
+      memberUserIds: selectedGroupMemberIds
+    });
+
+    setNewGroupName("");
+    setSelectedGroupMemberIds([]);
+    await loadGroups();
+    setSelectedGroupId(response.data.id as string);
+    setPanel("groups");
+    setStatusText("Grupo creado.");
+  };
+
   const saveProfile = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
@@ -335,160 +466,280 @@ export function AppPage( ) {
     setStatusText("Foto de perfil actualizada.");
   };
 
-  return (
-    <div className="min-h-screen bg-slate-50 p-4 lg:p-8" style={{ borderTop: `5px solid ${profile.accentColor}` }}>
-      <div className="mx-auto flex max-w-7xl gap-4 lg:gap-6">
-        <aside className="w-full max-w-sm rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-xl font-semibold text-slate-900">Habla Mas</h1>
-              <p className="text-xs text-slate-500">{user?.publicAlias} ({user?.publicCode})</p>
-            </div>
-            <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-700" onClick={() => logout().catch(() => undefined)}>
-              Salir
-            </button>
-          </div>
+  const renderChatMain = () => {
+    if (!currentConversation) {
+      return (
+        <div className="m-auto text-center text-slate-500">
+          <p className="text-lg font-medium">Selecciona una conversacion</p>
+          <p className="text-sm">Agrega contactos para comenzar.</p>
+        </div>
+      );
+    }
 
-          <nav className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-100 p-1">
-            {([
-              { key: "chats", label: "Chats" },
-              { key: "contacts", label: "Contactos" },
-              { key: "profile", label: "Perfil" }
-            ] as const).map((item) => (
-              <button
-                key={item.key}
-                className={clsx(
-                  "rounded-lg px-3 py-2 text-sm font-medium",
-                  panel === item.key ? "bg-white text-brand-700 shadow" : "text-slate-600"
+    return (
+      <>
+        <header className="border-b border-slate-200 px-5 py-4">
+          <p className="text-xs text-slate-500">Chat privado</p>
+          <h2 className="text-lg font-semibold text-slate-900">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
+          <p className="text-xs text-slate-500">
+            SignalR: {HubConnectionState[connectionState]}
+            {typingByConversation[currentConversation.id] ? ` | ${typingByConversation[currentConversation.id]} esta escribiendo...` : ""}
+          </p>
+        </header>
+
+        <section className="flex-1 space-y-3 overflow-y-auto p-5">
+          {messages.map((message) => {
+            const own = message.senderId === user?.id;
+            return (
+              <div key={message.id} className={clsx("max-w-[78%] rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+                {message.type === "image" ? (
+                  <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
+                    <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                  </a>
+                ) : (
+                  <p>{message.text}</p>
                 )}
-                onClick={() => setPanel(item.key)}
+                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                  {new Date(message.createdAt).toLocaleTimeString()} {own ? `· ${message.status}` : ""}
+                </p>
+              </div>
+            );
+          })}
+        </section>
+      </>
+    );
+  };
+
+  const renderGroupMain = () => {
+    if (!currentGroup) {
+      return (
+        <div className="m-auto text-center text-slate-500">
+          <p className="text-lg font-medium">Selecciona un grupo</p>
+          <p className="text-sm">Crea uno nuevo desde el panel lateral.</p>
+        </div>
+      );
+    }
+
+    return (
+      <>
+        <header className="border-b border-slate-200 px-5 py-4">
+          <p className="text-xs text-slate-500">Grupo</p>
+          <h2 className="text-lg font-semibold text-slate-900">{currentGroup.name}</h2>
+          <p className="text-xs text-slate-500">
+            {groupMembers.length} miembros
+          </p>
+        </header>
+
+        <section className="flex-1 space-y-3 overflow-y-auto p-5">
+          {groupMessages.map((message) => {
+            const own = message.senderId === user?.id;
+            return (
+              <div key={message.id} className={clsx("max-w-[82%] rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">{message.senderAlias}</p> : null}
+                {message.type === "image" ? (
+                  <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
+                    <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                  </a>
+                ) : (
+                  <p>{message.text}</p>
+                )}
+                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                  {new Date(message.createdAt).toLocaleTimeString()}
+                </p>
+              </div>
+            );
+          })}
+        </section>
+      </>
+    );
+  };
+
+  const renderSidebarContent = () => {
+    if (panel === "chats") {
+      return (
+        <div className="mt-4 space-y-2">
+          {conversations.map((conversation) => (
+            <button
+              key={conversation.id}
+              className={clsx(
+                "w-full rounded-xl border px-3 py-3 text-left",
+                selectedConversationId === conversation.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+              )}
+              onClick={() => setSelectedConversationId(conversation.id)}
+            >
+              <div className="flex items-center justify-between gap-2">
+                <p className="font-medium text-slate-900">{conversation.contact.alias || conversation.contact.publicAlias}</p>
+                <span className={clsx("h-2.5 w-2.5 rounded-full", presenceByUser[conversation.contact.id] ? "bg-emerald-500" : "bg-slate-300")} />
+              </div>
+              {conversation.lastMessage ? (
+                <p className="mt-1 truncate text-xs text-slate-500">
+                  {conversation.lastMessage.type === "image" ? "[imagen]" : conversation.lastMessage.text}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
+              )}
+            </button>
+          ))}
+        </div>
+      );
+    }
+
+    if (panel === "groups") {
+      return (
+        <div className="mt-4 space-y-3">
+          <form className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3" onSubmit={(event) => {
+            createGroup(event).catch(() => {
+              setStatusText("No fue posible crear el grupo.");
+            });
+          }}>
+            <p className="text-xs font-semibold uppercase text-slate-500">Nuevo grupo</p>
+            <input
+              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              placeholder="Nombre del grupo"
+              value={newGroupName}
+              onChange={(event) => setNewGroupName(event.target.value)}
+            />
+            <div className="max-h-32 space-y-1 overflow-auto rounded-lg border border-slate-200 bg-white p-2">
+              {contacts.length === 0 ? <p className="text-xs text-slate-500">Agrega contactos primero.</p> : null}
+              {contacts.map((contact) => (
+                <label key={contact.id} className="flex items-center gap-2 text-xs text-slate-700">
+                  <input
+                    type="checkbox"
+                    checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
+                    onChange={() => toggleGroupMember(contact.contactUser.id)}
+                  />
+                  <span>{contact.alias || contact.contactUser.publicAlias}</span>
+                </label>
+              ))}
+            </div>
+            <button className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white" type="submit">
+              Crear grupo
+            </button>
+          </form>
+
+          <div className="space-y-2">
+            {groupChats.map((group) => (
+              <button
+                key={group.id}
+                className={clsx(
+                  "w-full rounded-xl border px-3 py-3 text-left",
+                  selectedGroupId === group.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+                )}
+                onClick={() => setSelectedGroupId(group.id)}
               >
-                {item.label}
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-medium text-slate-900">{group.name}</p>
+                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] text-indigo-700">{group.memberCount}</span>
+                </div>
+                {group.lastMessage ? (
+                  <p className="mt-1 truncate text-xs text-slate-500">{group.lastMessage.type === "image" ? "[imagen]" : group.lastMessage.text}</p>
+                ) : (
+                  <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
+                )}
               </button>
             ))}
-          </nav>
+          </div>
+        </div>
+      );
+    }
 
-          <Link className="mt-3 block rounded-xl border border-brand-200 bg-brand-50 px-3 py-2 text-center text-sm font-medium text-brand-700" to="/chatbot">
-            Abrir chatbot AI
-          </Link>
+    if (panel === "contacts") {
+      return (
+        <div className="mt-4 space-y-3">
+          <form className="flex gap-2" onSubmit={(event) => {
+            addContactByCode(event).catch(() => {
+              setStatusText("No fue posible agregar el contacto.");
+            });
+          }}>
+            <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
+            <button className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white" type="submit">Agregar</button>
+          </form>
 
-          {panel === "chats" ? (
-            <div className="mt-4 space-y-2">
-              {conversations.map((conversation) => (
-                <button
-                  key={conversation.id}
-                  className={clsx(
-                    "w-full rounded-xl border px-3 py-3 text-left",
-                    selectedConversationId === conversation.id ? "border-brand-500 bg-brand-50" : "border-slate-200 bg-white"
-                  )}
-                  onClick={() => setSelectedConversationId(conversation.id)}
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <p className="font-medium text-slate-900">{conversation.contact.alias || conversation.contact.publicAlias}</p>
-                    <span className={clsx("h-2.5 w-2.5 rounded-full", presenceByUser[conversation.contact.id] ? "bg-emerald-500" : "bg-slate-300")} />
-                  </div>
-                  {conversation.lastMessage ? (
-                    <p className="mt-1 truncate text-xs text-slate-500">
-                      {conversation.lastMessage.type === "image" ? "[imagen]" : conversation.lastMessage.text}
-                    </p>
-                  ) : (
-                    <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
-                  )}
-                </button>
-              ))}
+          {contacts.map((contact) => (
+            <div key={contact.id} className="rounded-xl border border-slate-200 p-3">
+              <p className="text-sm font-medium text-slate-900">{contact.alias || contact.contactUser.publicAlias}</p>
+              <p className="text-xs text-slate-500">Codigo: {contact.contactUser.publicCode}</p>
+              <input
+                className="mt-2 w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                placeholder="Alias local"
+                defaultValue={contact.alias ?? ""}
+                onBlur={(event) => {
+                  updateAlias(contact.id, event.target.value).catch(() => {
+                    setStatusText("No fue posible actualizar alias.");
+                  });
+                }}
+              />
             </div>
-          ) : null}
+          ))}
+        </div>
+      );
+    }
 
-          {panel === "contacts" ? (
-            <div className="mt-4 space-y-3">
-              <form className="flex gap-2" onSubmit={(event) => {
-                addContactByCode(event).catch(() => {
-                  setStatusText("No fue posible agregar el contacto.");
-                });
-              }}>
-                <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
-                <button className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white" type="submit">Agregar</button>
-              </form>
+    return (
+      <form className="mt-4 space-y-3" onSubmit={(event) => {
+        saveProfile(event).catch(() => {
+          setStatusText("No fue posible actualizar el perfil.");
+        });
+      }}>
+        <label className="text-xs font-medium text-slate-600" htmlFor="profile-image">Foto de perfil</label>
+        <input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" onChange={(event) => {
+          uploadProfileImage(event).catch(() => {
+            setStatusText("No fue posible subir la foto.");
+          });
+        }} />
 
-              {contacts.map((contact) => (
-                <div key={contact.id} className="rounded-xl border border-slate-200 p-3">
-                  <p className="text-sm font-medium text-slate-900">{contact.alias || contact.contactUser.publicAlias}</p>
-                  <p className="text-xs text-slate-500">Codigo: {contact.contactUser.publicCode}</p>
-                  <input
-                    className="mt-2 w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
-                    placeholder="Alias local"
-                    defaultValue={contact.alias ?? ""}
-                    onBlur={(event) => {
-                      updateAlias(contact.id, event.target.value).catch(() => {
-                        setStatusText("No fue posible actualizar alias.");
-                      });
-                    }}
-                  />
-                </div>
-              ))}
+        <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Apodo publico" value={profile.publicAlias} onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))} />
+        <textarea className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Bio" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} />
+
+        <div className="grid grid-cols-2 gap-2">
+          <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={profile.theme} onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}>
+            <option value={1}>Claro</option>
+            <option value={2}>Oscuro</option>
+          </select>
+          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
+        </div>
+
+        <button className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Guardar perfil</button>
+      </form>
+    );
+  };
+
+  return (
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-4 lg:p-7">
+      <div className="mx-auto max-w-7xl overflow-hidden rounded-[30px] border border-indigo-100 bg-white shadow-2xl">
+        <div className="flex min-h-[82vh]">
+          <aside className="hidden w-16 flex-col items-center justify-between bg-indigo-600 py-5 text-indigo-100 md:flex">
+            <div className="space-y-2">
+              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "chats" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("chats")}>CH</button>
+              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "groups" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("groups")}>GR</button>
+              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "contacts" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("contacts")}>CT</button>
+              <button className={clsx("w-10 rounded-lg py-2 text-xs font-bold", panel === "profile" ? "bg-white text-indigo-700" : "bg-indigo-500")} onClick={() => setPanel("profile")}>PF</button>
             </div>
-          ) : null}
+            <button className="w-10 rounded-lg bg-indigo-500 py-2 text-xs font-semibold" onClick={() => logout().catch(() => undefined)}>OUT</button>
+          </aside>
 
-          {panel === "profile" ? (
-            <form className="mt-4 space-y-3" onSubmit={(event) => {
-              saveProfile(event).catch(() => {
-                setStatusText("No fue posible actualizar el perfil.");
-              });
-            }}>
-              <label className="text-xs font-medium text-slate-600" htmlFor="profile-image">Foto de perfil</label>
-              <input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" onChange={(event) => {
-                uploadProfileImage(event).catch(() => {
-                  setStatusText("No fue posible subir la foto.");
-                });
-              }} />
-
-              <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Apodo publico" value={profile.publicAlias} onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))} />
-              <textarea className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Bio" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} />
-
-              <div className="grid grid-cols-2 gap-2">
-                <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={profile.theme} onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}>
-                  <option value={1}>Claro</option>
-                  <option value={2}>Oscuro</option>
-                </select>
-                <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
+          <aside className="w-full max-w-sm border-r border-slate-200 bg-slate-50 p-4">
+            <div className="flex items-center justify-between">
+              <div>
+                <h1 className="text-xl font-semibold text-slate-900">Habla Mas</h1>
+                <p className="text-xs text-slate-500">{user?.publicAlias} ({user?.publicCode})</p>
               </div>
+              <button className="rounded-lg border border-slate-300 px-3 py-1 text-sm text-slate-700 md:hidden" onClick={() => logout().catch(() => undefined)}>
+                Salir
+              </button>
+            </div>
+            {renderSidebarContent()}
+          </aside>
 
-              <button className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Guardar perfil</button>
-            </form>
-          ) : null}
-        </aside>
+          <main className="flex min-h-[75vh] flex-1 flex-col bg-white">
+            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : (
+              <div className="m-auto text-center text-slate-500">
+                <p className="text-lg font-medium">{panel === "contacts" ? "Gestiona tus contactos" : "Perfil de usuario"}</p>
+                <p className="text-sm">{panel === "contacts" ? "Agrega por codigo, cambia alias y crea grupos." : "Personaliza tu cuenta y apariencia."}</p>
+              </div>
+            )}
 
-        <main className="flex min-h-[75vh] flex-1 flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-          {currentConversation ? (
-            <>
-              <header className="border-b border-slate-200 px-5 py-4">
-                <p className="text-sm text-slate-500">Conversacion privada</p>
-                <h2 className="text-xl font-semibold text-slate-900">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
-                <p className="text-xs text-slate-500">
-                  Estado SignalR: {HubConnectionState[connectionState]}
-                  {typingByConversation[currentConversation.id] ? ` | ${typingByConversation[currentConversation.id]} esta escribiendo...` : ""}
-                </p>
-              </header>
-
-              <section className="flex-1 space-y-3 overflow-y-auto p-5">
-                {messages.map((message) => {
-                  const own = message.senderId === user?.id;
-
-                  return (
-                    <div key={message.id} className={clsx("max-w-[75%] rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800")}>
-                      {message.type === "image" ? (
-                        <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                          <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
-                        </a>
-                      ) : (
-                        <p>{message.text}</p>
-                      )}
-                      <p className={clsx("mt-2 text-[10px]", own ? "text-brand-100" : "text-slate-500")}>{new Date(message.createdAt).toLocaleTimeString()} {own ? `· ${message.status}` : ""}</p>
-                    </div>
-                  );
-                })}
-              </section>
-
+            {(panel === "chats" || panel === "groups") ? (
               <footer className="border-t border-slate-200 p-4">
                 <form className="flex items-center gap-2" onSubmit={(event) => {
                   sendText(event).catch(() => {
@@ -497,11 +748,13 @@ export function AppPage( ) {
                 }}>
                   <input
                     className="w-full rounded-xl border border-slate-300 px-4 py-2"
-                    placeholder="Escribe un mensaje"
+                    placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
                     value={messageInput}
                     onChange={(event) => {
                       setMessageInput(event.target.value);
-                      sendTyping(event.target.value.trim().length > 0).catch(() => undefined);
+                      if (panel === "chats") {
+                        sendTyping(event.target.value.trim().length > 0).catch(() => undefined);
+                      }
                     }}
                   />
                   <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-600">
@@ -512,24 +765,15 @@ export function AppPage( ) {
                       });
                     }} />
                   </label>
-                  <button className="rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white" type="submit">Enviar</button>
+                  <button className="rounded-xl bg-indigo-600 px-4 py-2 font-semibold text-white" type="submit">Enviar</button>
                 </form>
               </footer>
-            </>
-          ) : (
-            <div className="m-auto text-center text-slate-500">
-              <p className="text-lg font-medium">Selecciona un chat</p>
-              <p className="text-sm">Agrega contactos por codigo publico para comenzar.</p>
-            </div>
-          )}
-        </main>
+            ) : null}
+          </main>
+        </div>
       </div>
 
       {statusText ? <div className="mx-auto mt-4 max-w-7xl rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
     </div>
   );
 }
-
-
-
-

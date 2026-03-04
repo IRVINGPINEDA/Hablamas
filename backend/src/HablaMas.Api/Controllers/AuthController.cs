@@ -27,6 +27,7 @@ public sealed class AuthController : ControllerBase
     private readonly IEmailService _emailService;
     private readonly JwtOptions _jwtOptions;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<AuthController> _logger;
 
     public AuthController(
         UserManager<AppUser> userManager,
@@ -35,7 +36,8 @@ public sealed class AuthController : ControllerBase
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
         IOptions<JwtOptions> jwtOptions,
-        IConfiguration configuration)
+        IConfiguration configuration,
+        ILogger<AuthController> logger)
     {
         _userManager = userManager;
         _dbContext = dbContext;
@@ -44,6 +46,7 @@ public sealed class AuthController : ControllerBase
         _emailService = emailService;
         _jwtOptions = jwtOptions.Value;
         _configuration = configuration;
+        _logger = logger;
     }
 
     [HttpPost("register")]
@@ -101,7 +104,25 @@ public sealed class AuthController : ControllerBase
 <p><a href='{verifyUrl}'>{verifyUrl}</a></p>
 <p>Despues de iniciar sesion, se te pedira cambiar la contrasena.</p>";
 
-        await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", html);
+        try
+        {
+            await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", html);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send verification email for user {UserId} ({Email}). Rolling back user creation.", user.Id, email);
+            var deleteResult = await _userManager.DeleteAsync(user);
+            if (!deleteResult.Succeeded)
+            {
+                _logger.LogError("Failed to rollback user {UserId} after email failure. Errors: {Errors}", user.Id, string.Join(", ", deleteResult.Errors.Select(e => e.Description)));
+            }
+
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Title = "Email service unavailable",
+                Detail = "No se pudo enviar el correo de verificacion. Intenta nuevamente."
+            });
+        }
 
         return Ok(new
         {
@@ -164,7 +185,19 @@ public sealed class AuthController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var verifyUrl = BuildAbsoluteUrl($"/verify-email?userId={user.Id}&token={encodedToken}");
 
-        await _emailService.SendAsync(user.Email!, "Habla Mas - Verifica tu correo", $"<p>Verifica tu correo aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+        try
+        {
+            await _emailService.SendAsync(user.Email!, "Habla Mas - Verifica tu correo", $"<p>Verifica tu correo aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resend verification email for user {UserId}", user.Id);
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "Email delivery failed",
+                Detail = "No se pudo enviar el correo de verificacion."
+            });
+        }
 
         return Ok(new { message = "Verification email sent." });
     }
@@ -282,7 +315,19 @@ public sealed class AuthController : ControllerBase
         var resetUrl = BuildAbsoluteUrl($"/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(encodedToken)}");
 
         var html = $"<p>Haz clic para restablecer tu contrasena:</p><p><a href='{resetUrl}'>{resetUrl}</a></p>";
-        await _emailService.SendAsync(user.Email!, "Habla Mas - Reset de contrasena", html);
+        try
+        {
+            await _emailService.SendAsync(user.Email!, "Habla Mas - Reset de contrasena", html);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to send forgot-password email for user {UserId}", user.Id);
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "Email delivery failed",
+                Detail = "No se pudo enviar el correo de recuperacion."
+            });
+        }
 
         return Ok(new { message = "If the account exists, a reset link has been sent." });
     }

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import type { FormEvent } from "react";
+import axios from "axios";
 import clsx from "clsx";
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
@@ -31,6 +32,20 @@ interface ContentBlock {
 
 const allowedTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
 const maxImages = 4;
+
+interface ApiProblemResponse {
+  title?: string;
+  detail?: string;
+}
+
+function extractApiError(error: unknown): string {
+  if (!axios.isAxiosError(error)) {
+    return "No fue posible obtener respuesta del chatbot.";
+  }
+
+  const data = error.response?.data as ApiProblemResponse | undefined;
+  return data?.detail ?? data?.title ?? "No fue posible obtener respuesta del chatbot.";
+}
 
 function splitBlocks(content: string): ContentBlock[] {
   const regex = /```([\w.+-]*)\n?([\s\S]*?)```/g;
@@ -188,8 +203,8 @@ export function ChatbotPage( ) {
         images: []
       };
       setMessages((prev) => [...prev, assistantMessage]);
-    } catch {
-      setStatusText("No fue posible obtener respuesta del chatbot.");
+    } catch (error: unknown) {
+      setStatusText(extractApiError(error));
     } finally {
       setSending(false);
     }

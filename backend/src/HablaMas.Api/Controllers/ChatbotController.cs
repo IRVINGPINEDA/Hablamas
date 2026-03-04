@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Net;
 using System.Text;
 using System.Text.Json;
 using HablaMas.Api.Contracts.Chatbot;
@@ -156,7 +157,30 @@ public sealed class ChatbotController : ControllerBase
         if (!response.IsSuccessStatusCode)
         {
             _logger.LogWarning("OpenAI request failed with status {StatusCode}. Payload: {Response}", (int)response.StatusCode, rawResponse);
-            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = "OpenAI request failed" });
+            var upstreamMessage = ExtractOpenAiError(rawResponse);
+            if (response.StatusCode == HttpStatusCode.TooManyRequests)
+            {
+                return StatusCode(StatusCodes.Status429TooManyRequests, new ProblemDetails
+                {
+                    Title = "OpenAI quota exceeded",
+                    Detail = upstreamMessage ?? "Se alcanzo el limite de cuota en OpenAI."
+                });
+            }
+
+            if (response.StatusCode is HttpStatusCode.Unauthorized or HttpStatusCode.Forbidden)
+            {
+                return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+                {
+                    Title = "OpenAI authentication failed",
+                    Detail = upstreamMessage ?? "La configuracion de OpenAI no es valida."
+                });
+            }
+
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "OpenAI request failed",
+                Detail = upstreamMessage ?? "No se pudo completar la solicitud al proveedor de IA."
+            });
         }
 
         var reply = ExtractReply(rawResponse);
@@ -219,6 +243,34 @@ public sealed class ChatbotController : ControllerBase
         }
 
         return builder.ToString().Trim();
+    }
+
+    private static string? ExtractOpenAiError(string rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (!doc.RootElement.TryGetProperty("error", out var error))
+            {
+                return null;
+            }
+
+            if (!error.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return message.GetString();
+        }
+        catch
+        {
+            return null;
+        }
     }
 
     private async Task<IActionResult?> EnsureCanChatAsync(Guid userId)
