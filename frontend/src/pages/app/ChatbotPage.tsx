@@ -44,7 +44,7 @@ function extractApiError(error: unknown): string {
   }
 
   if (error.response?.status === 429) {
-    return "Se alcanzo el limite de solicitudes/cuota del chatbot. Revisa tu plan de OpenAI y vuelve a intentar.";
+    return "Se alcanzo el limite de solicitudes/cuota del proveedor de IA. Revisa tu plan y vuelve a intentar.";
   }
 
   const data = error.response?.data as ApiProblemResponse | undefined;

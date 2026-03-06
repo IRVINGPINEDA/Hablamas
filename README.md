@@ -81,7 +81,9 @@ Variables clave:
 - `Redis__ConnectionString`
 - `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`
 - `UPLOADS__Path`, `UPLOADS__MaxMb`
+- `AI__Provider` (`openai` o `anthropic`)
 - `OPENAI__ApiKey`, `OPENAI__Model`
+- `ANTHROPIC__ApiKey`, `ANTHROPIC__Model`, `ANTHROPIC__BaseUrl`, `ANTHROPIC__Version`, `ANTHROPIC__MaxTokens`
 - `ADMIN__SeedEmail`, `ADMIN__SeedPassword`
 
 ## Levantar en desarrollo (local)
