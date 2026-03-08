@@ -502,11 +502,23 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {messages.map((message) => {
             const own = message.senderId === user?.id;
+            const isImage = message.type === "image";
             return (
-              <div key={message.id} className={clsx("max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800")}>
-                {message.type === "image" ? (
+              <div
+                key={message.id}
+                className={clsx(
+                  "max-w-[78%] rounded-2xl text-sm",
+                  own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800",
+                  isImage ? "p-2" : "break-words px-4 py-3"
+                )}
+              >
+                {isImage ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img
+                      alt="Mensaje"
+                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
+                      src={message.imageUrl}
+                    />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
@@ -545,12 +557,24 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
+            const isImage = message.type === "image";
             return (
-              <div key={message.id} className={clsx("max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800")}>
+              <div
+                key={message.id}
+                className={clsx(
+                  "max-w-[82%] rounded-2xl text-sm",
+                  own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800",
+                  isImage ? "p-2" : "break-words px-4 py-3"
+                )}
+              >
                 {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700">{message.senderAlias}</p> : null}
-                {message.type === "image" ? (
+                {isImage ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img
+                      alt="Mensaje grupo"
+                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
+                      src={message.imageUrl}
+                    />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
