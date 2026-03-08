@@ -45,7 +45,7 @@ export function AppPage( ) {
     bio: "",
     publicAlias: "",
     theme: 1,
-    accentColor: "#6366f1"
+    accentColor: "#5f7888"
   });
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
@@ -102,7 +102,7 @@ export function AppPage( ) {
       bio: response.data.bio ?? "",
       publicAlias: response.data.publicAlias ?? "",
       theme: response.data.theme,
-      accentColor: response.data.accentColor ?? "#6366f1"
+      accentColor: response.data.accentColor ?? "#5f7888"
     });
   };
 
@@ -502,16 +502,28 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {messages.map((message) => {
             const own = message.senderId === user?.id;
+            const isImage = message.type === "image";
             return (
-              <div key={message.id} className={clsx("max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
-                {message.type === "image" ? (
+              <div
+                key={message.id}
+                className={clsx(
+                  "max-w-[78%] rounded-2xl text-sm",
+                  own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800",
+                  isImage ? "p-2" : "break-words px-4 py-3"
+                )}
+              >
+                {isImage ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img
+                      alt="Mensaje"
+                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
+                      src={message.imageUrl}
+                    />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
                 )}
-                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                <p className={clsx("mt-2 text-[10px]", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
                 </p>
               </div>
@@ -545,17 +557,29 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
+            const isImage = message.type === "image";
             return (
-              <div key={message.id} className={clsx("max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
-                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">{message.senderAlias}</p> : null}
-                {message.type === "image" ? (
+              <div
+                key={message.id}
+                className={clsx(
+                  "max-w-[82%] rounded-2xl text-sm",
+                  own ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-800",
+                  isImage ? "p-2" : "break-words px-4 py-3"
+                )}
+              >
+                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700">{message.senderAlias}</p> : null}
+                {isImage ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img
+                      alt="Mensaje grupo"
+                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
+                      src={message.imageUrl}
+                    />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{message.text}</p>
                 )}
-                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                <p className={clsx("mt-2 text-[10px]", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()}
                 </p>
               </div>
@@ -575,7 +599,7 @@ export function AppPage( ) {
               key={conversation.id}
               className={clsx(
                 "w-full rounded-xl border px-4 py-3 text-left",
-                selectedConversationId === conversation.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+                selectedConversationId === conversation.id ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white"
               )}
               onClick={() => setSelectedConversationId(conversation.id)}
             >
@@ -624,7 +648,7 @@ export function AppPage( ) {
                 </label>
               ))}
             </div>
-            <button className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white" type="submit">
+            <button className="w-full rounded-lg bg-brand-600 px-3 py-2 text-sm font-semibold text-white" type="submit">
               Crear grupo
             </button>
           </form>
@@ -635,13 +659,13 @@ export function AppPage( ) {
                 key={group.id}
                 className={clsx(
                   "w-full rounded-xl border px-4 py-3 text-left",
-                  selectedGroupId === group.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+                  selectedGroupId === group.id ? "border-brand-300 bg-brand-50" : "border-slate-200 bg-white"
                 )}
                 onClick={() => setSelectedGroupId(group.id)}
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[15px] font-medium text-slate-900">{group.name}</p>
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] text-indigo-700">{group.memberCount}</span>
+                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-700">{group.memberCount}</span>
                 </div>
                 {group.lastMessage ? (
                   <p className="mt-1 truncate text-xs text-slate-500">{group.lastMessage.type === "image" ? "[imagen]" : group.lastMessage.text}</p>
@@ -664,7 +688,7 @@ export function AppPage( ) {
             });
           }}>
             <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
-            <button className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white" type="submit">Agregar</button>
+            <button className="rounded-lg bg-brand-600 px-3 py-2 text-sm font-medium text-white" type="submit">Agregar</button>
           </form>
 
           {contacts.map((contact) => (
@@ -711,14 +735,14 @@ export function AppPage( ) {
           <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
         </div>
 
-        <button className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Guardar perfil</button>
+        <button className="w-full rounded-lg bg-brand-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Guardar perfil</button>
       </form>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-4 lg:p-9">
-      <div className="mx-auto max-w-[1700px] overflow-hidden rounded-[30px] border border-indigo-100 bg-white shadow-2xl">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dce4ea,_#f6f8fa_45%,_#e9eef2_100%)] p-4 lg:p-9">
+      <div className="mx-auto max-w-[1700px] overflow-hidden rounded-[30px] border border-brand-100 bg-white shadow-2xl">
         <div className="flex h-[88vh] flex-col lg:flex-row">
           <aside className="w-full border-b border-slate-200 bg-slate-50 p-5 lg:flex lg:w-[430px] lg:flex-col lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between">
@@ -732,13 +756,13 @@ export function AppPage( ) {
             </div>
 
             <nav className="mt-4 grid grid-cols-2 gap-2">
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "chats" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("chats")}>Chats</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "groups" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("groups")}>Grupos</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "contacts" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("contacts")}>Contactos</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "profile" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("profile")}>Perfil</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "chats" ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("chats")}>Chats</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "groups" ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("groups")}>Grupos</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "contacts" ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("contacts")}>Contactos</button>
+              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "profile" ? "bg-brand-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("profile")}>Perfil</button>
             </nav>
 
-            <Link className="mt-2 block rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-center text-sm font-semibold text-indigo-700" to="/chatbot">
+            <Link className="mt-2 block rounded-lg border border-brand-200 bg-brand-50 px-3 py-2 text-center text-sm font-semibold text-brand-700" to="/chatbot">
               Chatbot IA
             </Link>
 
@@ -781,7 +805,7 @@ export function AppPage( ) {
                       });
                     }} />
                   </label>
-                  <button className="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white" type="submit">Enviar</button>
+                  <button className="rounded-xl bg-brand-600 px-5 py-2.5 font-semibold text-white" type="submit">Enviar</button>
                 </form>
               </footer>
             ) : null}
@@ -789,7 +813,7 @@ export function AppPage( ) {
         </div>
       </div>
 
-      {statusText ? <div className="mx-auto mt-4 max-w-[1700px] rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
+      {statusText ? <div className="mx-auto mt-4 max-w-[1700px] rounded-xl bg-brand-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
     </div>
   );
 }

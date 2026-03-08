@@ -4,8 +4,8 @@
 
 :root {
   font-family: "Segoe UI", "Helvetica Neue", sans-serif;
-  color: #0f172a;
-  background: radial-gradient(circle at top right, #dbeafe, #f8fafc 45%);
+  color: #1f2933;
+  background: radial-gradient(circle at top right, #dde5ea, #f7f9fb 46%, #eef2f5 100%);
 }
 
 body {
