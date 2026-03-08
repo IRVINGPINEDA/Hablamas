@@ -43,12 +43,12 @@ export function LoginPage( ) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eef2,_#f7f9fb_48%,_#eef2f5_100%)] px-4 py-8">
       <AuthCard title="Iniciar sesion" subtitle="Accede con tu correo y contrasena temporal o definitiva">
         <form className="space-y-4" onSubmit={submit}>
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Correo" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Contrasena" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-          <button className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-60" type="submit" disabled={loading}>
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Correo" type="email" value={email} onChange={(event) => setEmail(event.target.value)} autoComplete="email" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Contrasena" type="password" value={password} onChange={(event) => setPassword(event.target.value)} autoComplete="current-password" required />
+          <button className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60" type="submit" disabled={loading}>
             {loading ? "Entrando..." : "Entrar"}
           </button>
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}

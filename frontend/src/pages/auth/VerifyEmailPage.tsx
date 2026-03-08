@@ -38,10 +38,11 @@ export function VerifyEmailPage( ) {
   }, [query.token, query.userId]);
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eef2,_#f7f9fb_48%,_#eef2f5_100%)] px-4 py-8">
       <AuthCard title="Verificacion de correo" subtitle="Debes confirmar tu correo antes de usar el chat">
         <p className="text-sm text-slate-600">{message}</p>
         {status === "loading" ? <p className="mt-3 text-sm text-slate-500">Verificando...</p> : null}
+        {status === "success" ? <p className="mt-3 inline-block rounded-full bg-emerald-100 px-3 py-1 text-xs font-medium text-emerald-700">Correo confirmado</p> : null}
       </AuthCard>
     </div>
   );

@@ -54,16 +54,16 @@ export function RegisterPage( ) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eef2,_#f7f9fb_48%,_#eef2f5_100%)] px-4 py-8">
       <AuthCard title="Crear cuenta" subtitle="Registra tu usuario en Habla Mas">
         <form className="space-y-4" onSubmit={submit}>
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Nombre" value={form.firstName} onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Apellidos" value={form.lastName} onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Correo" type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Direccion" value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Telefono" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Apodo publico (opcional)" value={form.publicAlias} onChange={(event) => setForm((prev) => ({ ...prev, publicAlias: event.target.value }))} />
-          <button disabled={saving} className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-60" type="submit">
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Nombre" value={form.firstName} onChange={(event) => setForm((prev) => ({ ...prev, firstName: event.target.value }))} autoComplete="given-name" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Apellidos" value={form.lastName} onChange={(event) => setForm((prev) => ({ ...prev, lastName: event.target.value }))} autoComplete="family-name" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Correo" type="email" value={form.email} onChange={(event) => setForm((prev) => ({ ...prev, email: event.target.value }))} autoComplete="email" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Direccion" value={form.address} onChange={(event) => setForm((prev) => ({ ...prev, address: event.target.value }))} autoComplete="street-address" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Telefono" value={form.phone} onChange={(event) => setForm((prev) => ({ ...prev, phone: event.target.value }))} autoComplete="tel" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" placeholder="Apodo publico (opcional)" value={form.publicAlias} onChange={(event) => setForm((prev) => ({ ...prev, publicAlias: event.target.value }))} autoComplete="nickname" />
+          <button disabled={saving} className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white transition hover:bg-brand-700 disabled:opacity-60" type="submit">
             {saving ? "Creando..." : "Crear cuenta"}
           </button>
           {message ? <p className="text-sm text-emerald-600">{message}</p> : null}
