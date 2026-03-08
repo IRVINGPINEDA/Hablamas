@@ -215,7 +215,7 @@ export function ChatbotPage( ) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 lg:p-8">
+    <div className="min-h-screen bg-[radial-gradient(circle_at_top,_#e6edf1,_#f6f8fa_45%,_#edf2f5_100%)] p-4 lg:p-8">
       <div className="mx-auto flex max-w-6xl flex-col gap-4">
         <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
           <div className="flex flex-wrap items-center justify-between gap-3">
@@ -224,14 +224,14 @@ export function ChatbotPage( ) {
               <p className="text-sm text-slate-500">Preguntas, codigo e imagenes en una sola conversacion.</p>
             </div>
             <div className="flex items-center gap-2">
-              <Link className="rounded-lg border border-slate-300 px-3 py-2 text-sm" to="/app">
+              <Link className="rounded-lg border border-slate-300 px-3 py-2 text-sm transition hover:border-brand-300 hover:text-brand-700" to="/app">
                 Volver a chats
               </Link>
-              <button className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={clearConversation} type="button">
+              <button className="rounded-lg border border-slate-300 px-3 py-2 text-sm transition hover:border-brand-300 hover:text-brand-700" onClick={clearConversation} type="button">
                 Limpiar
               </button>
               <button
-                className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white"
+                className="rounded-lg bg-brand-900 px-3 py-2 text-sm text-white transition hover:bg-brand-700"
                 onClick={() => {
                   logout().then(() => navigate("/login", { replace: true })).catch(() => navigate("/login", { replace: true }));
                 }}
@@ -264,7 +264,7 @@ export function ChatbotPage( ) {
                   <div className="mb-3 grid grid-cols-2 gap-2">
                     {message.images.map((image) => (
                       <a className="block" href={image.previewUrl} key={`${message.id}-${image.name}`} rel="noreferrer" target="_blank">
-                        <img alt={image.name} className="h-28 w-full rounded-lg object-cover" src={image.previewUrl} />
+                        <img alt={image.name} className="h-40 w-full rounded-lg object-contain bg-slate-200/60" src={image.previewUrl} />
                       </a>
                     ))}
                   </div>
@@ -295,7 +295,7 @@ export function ChatbotPage( ) {
               <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
                 {pendingImages.map((image) => (
                   <div className="relative overflow-hidden rounded-lg border border-slate-300" key={image.id}>
-                    <img alt={image.name} className="h-24 w-full object-cover" src={image.previewUrl} />
+                    <img alt={image.name} className="h-24 w-full object-contain bg-slate-100" src={image.previewUrl} />
                     <button
                       className="absolute right-1 top-1 rounded bg-black/60 px-2 py-1 text-[10px] text-white"
                       onClick={() => removePendingImage(image.id)}
@@ -315,13 +315,13 @@ export function ChatbotPage( ) {
               });
             }}>
               <textarea
-                className="min-h-28 w-full resize-y rounded-xl border border-slate-300 px-4 py-3"
+                className="min-h-28 w-full resize-y rounded-xl border border-slate-300 px-4 py-3 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100"
                 onChange={(event) => setInput(event.target.value)}
                 placeholder="Escribe tu pregunta o pega codigo aqui..."
                 value={input}
               />
               <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">
+                <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700 transition hover:border-brand-300 hover:text-brand-700">
                   Adjuntar imagen
                   <input accept="image/png,image/jpeg,image/webp" className="hidden" multiple onChange={(event) => {
                     addImages(event).catch(() => {
@@ -330,7 +330,7 @@ export function ChatbotPage( ) {
                   }} type="file" />
                 </label>
                 <button
-                  className="rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
+                  className="rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white transition hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={!canSend}
                   type="submit"
                 >

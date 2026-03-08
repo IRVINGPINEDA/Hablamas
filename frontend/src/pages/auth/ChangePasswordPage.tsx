@@ -85,14 +85,14 @@ export function ChangePasswordPage( ) {
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <div className="flex min-h-screen items-center justify-center bg-[radial-gradient(circle_at_top,_#e8eef2,_#f7f9fb_48%,_#eef2f5_100%)] px-4 py-8">
       <AuthCard title="Cambiar contrasena" subtitle="Debes actualizar tu contrasena temporal para continuar">
         <form className="space-y-4" onSubmit={submit}>
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="password" placeholder="Contrasena actual" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="password" placeholder="Nueva contrasena" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} minLength={10} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" type="password" placeholder="Confirmar nueva contrasena" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} minLength={10} required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" type="password" placeholder="Contrasena actual" value={currentPassword} onChange={(event) => setCurrentPassword(event.target.value)} autoComplete="current-password" required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" type="password" placeholder="Nueva contrasena" value={newPassword} onChange={(event) => setNewPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
+          <input className="w-full rounded-lg border border-slate-300 px-3 py-2 transition focus:border-brand-300 focus:outline-none focus:ring-2 focus:ring-brand-100" type="password" placeholder="Confirmar nueva contrasena" value={confirmNewPassword} onChange={(event) => setConfirmNewPassword(event.target.value)} autoComplete="new-password" minLength={10} required />
           <p className="text-xs text-slate-500">Reglas: minimo 10 caracteres, una mayuscula, una minuscula, un numero y un simbolo.</p>
-          <button className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700" type="submit">Cambiar contrasena</button>
+          <button className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white transition hover:bg-brand-700" type="submit">Cambiar contrasena</button>
         </form>
         {message ? <p className="mt-3 text-sm text-emerald-600">{message}</p> : null}
         {error ? <p className="mt-3 whitespace-pre-line text-sm text-rose-600">{error}</p> : null}
