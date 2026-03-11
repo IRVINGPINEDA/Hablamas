@@ -70,6 +70,9 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.HasIndex(x => new { x.ConversationId, x.CreatedAt });
             entity.Property(x => x.Text).HasMaxLength(4000);
             entity.Property(x => x.ImageUrl).HasMaxLength(500);
+            entity.Property(x => x.AttachmentUrl).HasMaxLength(500);
+            entity.Property(x => x.AttachmentName).HasMaxLength(255);
+            entity.Property(x => x.AttachmentContentType).HasMaxLength(120);
             entity.Property(x => x.ClientMessageId).HasMaxLength(120);
             entity.HasOne(x => x.Conversation)
                 .WithMany(x => x.Messages)
@@ -123,6 +126,9 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.HasIndex(x => new { x.GroupChatId, x.CreatedAt });
             entity.Property(x => x.Text).HasMaxLength(4000);
             entity.Property(x => x.ImageUrl).HasMaxLength(500);
+            entity.Property(x => x.AttachmentUrl).HasMaxLength(500);
+            entity.Property(x => x.AttachmentName).HasMaxLength(255);
+            entity.Property(x => x.AttachmentContentType).HasMaxLength(120);
             entity.Property(x => x.ClientMessageId).HasMaxLength(120);
             entity.HasOne(x => x.GroupChat)
                 .WithMany(x => x.Messages)
