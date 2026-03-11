@@ -81,10 +81,21 @@ Variables clave:
 - `Redis__ConnectionString`
 - `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`
 - `UPLOADS__Path`, `UPLOADS__MaxMb`
-- `AI__Provider` (`openai` o `anthropic`)
-- `OPENAI__ApiKey`, `OPENAI__Model`
+- `AI__Provider` (`openai`, `openrouter` o `anthropic`)
+- `OPENAI__ApiKey`, `OPENAI__Model`, `OPENAI__BaseUrl`
 - `ANTHROPIC__ApiKey`, `ANTHROPIC__Model`, `ANTHROPIC__BaseUrl`, `ANTHROPIC__Version`, `ANTHROPIC__MaxTokens`
 - `ADMIN__SeedEmail`, `ADMIN__SeedPassword`
+
+### OpenRouter (alternativa con modelos gratis limitados)
+
+Para usar OpenRouter en el mismo flujo OpenAI-compatible:
+
+```env
+AI__Provider=openrouter
+OPENAI__ApiKey=sk-or-v1-...
+OPENAI__BaseUrl=https://openrouter.ai/api/v1
+OPENAI__Model=openrouter/free
+```
 
 ## Levantar en desarrollo (local)
 

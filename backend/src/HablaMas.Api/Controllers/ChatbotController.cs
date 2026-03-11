@@ -71,11 +71,12 @@ public sealed class ChatbotController : ControllerBase
         {
             "" => await SendWithOpenAiAsync(history, images, messageText),
             "openai" => await SendWithOpenAiAsync(history, images, messageText),
+            "openrouter" => await SendWithOpenAiAsync(history, images, messageText),
             "anthropic" or "claude" => await SendWithAnthropicAsync(history, images, messageText),
             _ => StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
                 Title = "Unsupported AI provider",
-                Detail = "Configura AI:Provider con 'openai' o 'anthropic'."
+                Detail = "Configura AI:Provider con 'openai', 'openrouter' o 'anthropic'."
             })
         };
     }

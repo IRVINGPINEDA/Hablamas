@@ -23,6 +23,39 @@ interface ProfileForm {
 
 type Panel = "chats" | "groups" | "contacts" | "profile";
 
+const MESSAGE_WRAP_LENGTH = 50;
+
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function wrapMessageText(text?: string): string {
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .split("\n")
+    .map((line) => {
+      if (line.length <= MESSAGE_WRAP_LENGTH) {
+        return line;
+      }
+
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += MESSAGE_WRAP_LENGTH) {
+        chunks.push(line.slice(index, index + MESSAGE_WRAP_LENGTH));
+      }
+
+      return chunks.join("\n");
+    })
+    .join("\n");
+}
+
 export function AppPage( ) {
   const { user, logout, refreshProfile } = useAuth();
   const [panel, setPanel] = useState<Panel>("chats");
@@ -492,11 +525,37 @@ export function AppPage( ) {
       <>
         <header className="border-b border-slate-200 px-5 py-4">
           <p className="text-xs text-slate-500">Chat privado</p>
-          <h2 className="text-lg font-semibold text-slate-900">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
-          <p className="text-xs text-slate-500">
-            SignalR: {HubConnectionState[connectionState]}
-            {typingByConversation[currentConversation.id] ? ` | ${typingByConversation[currentConversation.id]} esta escribiendo...` : ""}
-          </p>
+          <div className="mt-2 flex items-center gap-3">
+            <div className="relative">
+              {currentConversation.contact.profileImageUrl ? (
+                <img
+                  alt={currentConversation.contact.alias || currentConversation.contact.publicAlias}
+                  className="h-14 w-14 rounded-full object-cover ring-2 ring-white"
+                  src={currentConversation.contact.profileImageUrl}
+                />
+              ) : (
+                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 ring-2 ring-white">
+                  {getInitials(currentConversation.contact.alias || currentConversation.contact.publicAlias)}
+                </div>
+              )}
+              <span
+                className={clsx(
+                  "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white",
+                  presenceByUser[currentConversation.contact.id] ? "bg-emerald-500" : "bg-slate-300"
+                )}
+              />
+            </div>
+
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                {currentConversation.contact.alias || currentConversation.contact.publicAlias}
+              </h2>
+              <p className="text-xs text-slate-500">
+                SignalR: {HubConnectionState[connectionState]}
+                {typingByConversation[currentConversation.id] ? ` | ${typingByConversation[currentConversation.id]} esta escribiendo...` : ""}
+              </p>
+            </div>
+          </div>
         </header>
 
         <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
@@ -509,7 +568,7 @@ export function AppPage( ) {
                     <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
                   </a>
                 ) : (
-                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                  <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>
                 )}
                 <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
@@ -553,7 +612,7 @@ export function AppPage( ) {
                     <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
                   </a>
                 ) : (
-                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
+                  <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>
                 )}
                 <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()}

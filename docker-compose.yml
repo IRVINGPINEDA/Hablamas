@@ -38,6 +38,7 @@ services:
       AI__Provider: ${AI__Provider:-openai}
       OPENAI__ApiKey: ${OPENAI__ApiKey}
       OPENAI__Model: ${OPENAI__Model}
+      OPENAI__BaseUrl: ${OPENAI__BaseUrl:-https://api.openai.com/v1}
       ANTHROPIC__ApiKey: ${ANTHROPIC__ApiKey}
       ANTHROPIC__Model: ${ANTHROPIC__Model:-claude-3-5-sonnet-latest}
       ANTHROPIC__BaseUrl: ${ANTHROPIC__BaseUrl:-https://api.anthropic.com/v1}
