@@ -562,10 +562,16 @@ export function AppPage( ) {
           {messages.map((message) => {
             const own = message.senderId === user?.id;
             return (
-              <div key={message.id} className={clsx("max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+              <div
+                key={message.id}
+                className={clsx(
+                  "w-fit max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm",
+                  own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800"
+                )}
+              >
                 {message.type === "image" ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img alt="Mensaje" className="h-auto max-h-64 w-auto max-w-[220px] rounded-xl object-cover sm:max-w-[320px]" src={message.imageUrl} />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>
@@ -605,11 +611,17 @@ export function AppPage( ) {
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
             return (
-              <div key={message.id} className={clsx("max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm", own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800")}>
+              <div
+                key={message.id}
+                className={clsx(
+                  "w-fit max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm",
+                  own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800"
+                )}
+              >
                 {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">{message.senderAlias}</p> : null}
                 {message.type === "image" ? (
                   <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img alt="Mensaje grupo" className="max-h-64 w-full rounded-xl object-cover" src={message.imageUrl} />
+                    <img alt="Mensaje grupo" className="h-auto max-h-64 w-auto max-w-[220px] rounded-xl object-cover sm:max-w-[320px]" src={message.imageUrl} />
                   </a>
                 ) : (
                   <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>
