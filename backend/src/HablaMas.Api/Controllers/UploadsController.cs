@@ -65,12 +65,19 @@ public sealed class UploadsController : ControllerBase
         ".doc",
         ".docx",
         ".json",
+        ".m4a",
+        ".mov",
+        ".mp3",
+        ".mp4",
+        ".ogg",
         ".pdf",
         ".ppt",
         ".pptx",
         ".rar",
         ".rtf",
         ".txt",
+        ".wav",
+        ".webm",
         ".xls",
         ".xlsx",
         ".zip"
@@ -165,32 +172,56 @@ public sealed class UploadsController : ControllerBase
 
     private static MessageType? ResolveAttachmentMessageType(string? contentType, string? extension)
     {
-        if (!string.IsNullOrWhiteSpace(contentType))
+        var normalizedContentType = contentType?.Split(';', 2, StringSplitOptions.TrimEntries)[0];
+
+        if (!string.IsNullOrWhiteSpace(normalizedContentType))
         {
-            if (AllowedImageTypes.Contains(contentType))
+            if (AllowedImageTypes.Contains(normalizedContentType))
             {
                 return MessageType.Image;
             }
 
-            if (AllowedVideoTypes.Contains(contentType))
+            if (AllowedVideoTypes.Contains(normalizedContentType))
             {
                 return MessageType.Video;
             }
 
-            if (AllowedAudioTypes.Contains(contentType))
+            if (AllowedAudioTypes.Contains(normalizedContentType))
             {
                 return MessageType.Audio;
             }
 
-            if (AllowedFileTypes.Contains(contentType))
+            if (AllowedFileTypes.Contains(normalizedContentType))
             {
                 return MessageType.File;
             }
         }
 
+        if (!string.IsNullOrWhiteSpace(extension))
+        {
+            if (extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageType.Video;
+            }
+
+            if (extension.Equals(".aac", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageType.Audio;
+            }
+        }
+
         if (!string.IsNullOrWhiteSpace(extension) && AllowedFileExtensions.Contains(extension))
         {
-            return MessageType.File;
+            return extension.Equals(".webm", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(normalizedContentType)
+                && normalizedContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+                    ? MessageType.Audio
+                    : MessageType.File;
         }
 
         return null;

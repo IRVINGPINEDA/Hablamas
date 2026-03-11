@@ -558,7 +558,11 @@ export function AppPage( ) {
 
   const toggleVoiceRecording = async (): Promise<void> => {
     if (isRecordingVoice) {
-      mediaRecorderRef.current?.stop();
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        setStatusText("Procesando nota de voz...");
+        recorder.stop();
+      }
       return;
     }
 
@@ -626,7 +630,7 @@ export function AppPage( ) {
         });
     };
 
-    recorder.start();
+    recorder.start(250);
     mediaRecorderRef.current = recorder;
     setIsRecordingVoice(true);
     setStatusText("Grabando nota de voz...");
@@ -755,6 +759,141 @@ export function AppPage( ) {
 
     return <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>;
   };
+
+  const renderProfileMain = () => (
+    <section className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 md:p-6">
+      <form
+        className="mx-auto grid max-w-5xl gap-6 xl:grid-cols-[320px_minmax(0,1fr)]"
+        onSubmit={(event) => {
+          saveProfile(event).catch(() => {
+            setStatusText("No fue posible actualizar el perfil.");
+          });
+        }}
+      >
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Perfil</p>
+          <div className="mt-6 flex flex-col items-center text-center">
+            {user?.profileImageUrl ? (
+              <img
+                alt={profile.publicAlias || user.publicAlias}
+                className="h-28 w-28 rounded-full object-cover ring-4 ring-indigo-100"
+                src={user.profileImageUrl}
+              />
+            ) : (
+              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-indigo-100 text-2xl font-semibold text-indigo-700 ring-4 ring-indigo-100">
+                {getInitials(profile.publicAlias || user?.publicAlias || "HM")}
+              </div>
+            )}
+
+            <p className="mt-4 text-xl font-semibold text-slate-900">{profile.publicAlias || user?.publicAlias}</p>
+            <p className="text-sm text-slate-500">Codigo publico: {user?.publicCode}</p>
+
+            <label className="mt-5 w-full cursor-pointer rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700">
+              Cambiar foto
+              <input
+                className="hidden"
+                accept="image/png,image/jpeg,image/webp"
+                type="file"
+                onChange={(event) => {
+                  uploadProfileImage(event).catch(() => {
+                    setStatusText("No fue posible subir la foto.");
+                  });
+                }}
+              />
+            </label>
+
+            <div className="mt-6 w-full rounded-2xl bg-slate-50 px-4 py-4 text-left">
+              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Vista rapida</p>
+              <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+                <span>Tema</span>
+                <span>{profile.theme === 2 ? "Oscuro" : "Claro"}</span>
+              </div>
+              <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
+                <span>Color</span>
+                <span className="inline-flex items-center gap-2">
+                  <span className="h-4 w-4 rounded-full border border-slate-200" style={{ backgroundColor: profile.accentColor }} />
+                  {profile.accentColor}
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
+          <div className="flex flex-col gap-2 border-b border-slate-100 pb-5 md:flex-row md:items-end md:justify-between">
+            <div>
+              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Configuracion</p>
+              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Ajustes de tu cuenta</h2>
+            </div>
+            <p className="text-sm text-slate-500">Actualiza alias, bio, tema y color de acento.</p>
+          </div>
+
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-700">Apodo publico</span>
+              <input
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                placeholder="Tu nombre visible"
+                value={profile.publicAlias}
+                onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-700">Tema</span>
+              <select
+                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                value={profile.theme}
+                onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}
+              >
+                <option value={1}>Claro</option>
+                <option value={2}>Oscuro</option>
+              </select>
+            </label>
+
+            <label className="space-y-2 md:col-span-2">
+              <span className="text-sm font-medium text-slate-700">Bio</span>
+              <textarea
+                className="min-h-36 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
+                placeholder="Cuenta algo sobre ti"
+                value={profile.bio}
+                onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))}
+              />
+            </label>
+
+            <label className="space-y-2">
+              <span className="text-sm font-medium text-slate-700">Color de acento</span>
+              <div className="flex items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3">
+                <input
+                  className="h-12 w-16 cursor-pointer rounded-xl border-0 bg-transparent p-0"
+                  type="color"
+                  value={profile.accentColor}
+                  onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))}
+                />
+                <div>
+                  <p className="text-sm font-medium text-slate-800">{profile.accentColor}</p>
+                  <p className="text-xs text-slate-500">Se usa como color personalizado en tu cuenta.</p>
+                </div>
+              </div>
+            </label>
+
+            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4">
+              <p className="text-sm font-medium text-slate-700">Consejo</p>
+              <p className="mt-2 text-sm leading-6 text-slate-500">
+                Usa un alias corto y una bio breve para que tu perfil se vea limpio en chats y grupos.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-6 flex justify-end">
+            <button className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white" type="submit">
+              Guardar cambios
+            </button>
+          </div>
+        </div>
+      </form>
+    </section>
+  );
 
   const renderChatMain = () => {
     if (!currentConversation) {
@@ -992,38 +1131,49 @@ export function AppPage( ) {
     }
 
     return (
-      <form className="mt-4 space-y-3" onSubmit={(event) => {
-        saveProfile(event).catch(() => {
-          setStatusText("No fue posible actualizar el perfil.");
-        });
-      }}>
-        <label className="text-xs font-medium text-slate-600" htmlFor="profile-image">Foto de perfil</label>
-        <input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp" className="block w-full text-xs" onChange={(event) => {
-          uploadProfileImage(event).catch(() => {
-            setStatusText("No fue posible subir la foto.");
-          });
-        }} />
-
-        <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Apodo publico" value={profile.publicAlias} onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))} />
-        <textarea className="min-h-24 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Bio" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} />
-
-        <div className="grid grid-cols-2 gap-2">
-          <select className="rounded-lg border border-slate-300 px-3 py-2 text-sm" value={profile.theme} onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}>
-            <option value={1}>Claro</option>
-            <option value={2}>Oscuro</option>
-          </select>
-          <input className="rounded-lg border border-slate-300 px-3 py-2 text-sm" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
+      <div className="mt-4 space-y-3">
+        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Perfil</p>
+          <div className="mt-4 flex items-center gap-3">
+            {user?.profileImageUrl ? (
+              <img alt={profile.publicAlias || user.publicAlias} className="h-16 w-16 rounded-full object-cover" src={user.profileImageUrl} />
+            ) : (
+              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 text-lg font-semibold text-indigo-700">
+                {getInitials(profile.publicAlias || user?.publicAlias || "HM")}
+              </div>
+            )}
+            <div className="min-w-0">
+              <p className="truncate text-base font-semibold text-slate-900">{profile.publicAlias || user?.publicAlias}</p>
+              <p className="truncate text-xs text-slate-500">{user?.email}</p>
+              <p className="mt-1 text-xs text-slate-400">Edita tus datos en el panel principal.</p>
+            </div>
+          </div>
         </div>
 
-        <button className="w-full rounded-lg bg-indigo-600 px-4 py-2 text-sm font-semibold text-white" type="submit">Guardar perfil</button>
-      </form>
+        <div className="rounded-[24px] border border-slate-200 bg-slate-900 p-4 text-white shadow-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">Ajustes activos</p>
+          <div className="mt-4 space-y-3 text-sm">
+            <div className="flex items-center justify-between">
+              <span className="text-slate-300">Tema</span>
+              <span>{profile.theme === 2 ? "Oscuro" : "Claro"}</span>
+            </div>
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-slate-300">Color</span>
+              <span className="inline-flex items-center gap-2">
+                <span className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: profile.accentColor }} />
+                {profile.accentColor}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
     );
   };
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-4 lg:p-9">
-      <div className="mx-auto max-w-[1700px] overflow-hidden rounded-[30px] border border-indigo-100 bg-white shadow-2xl">
-        <div className="flex h-[88vh] flex-col lg:flex-row">
+    <div className="min-h-dvh bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-0 sm:p-3 lg:p-5">
+      <div className="mx-auto h-[100dvh] w-full overflow-hidden rounded-none border border-indigo-100 bg-white shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-[30px] lg:h-[calc(100dvh-2.5rem)]">
+        <div className="flex h-full min-h-0 flex-col lg:flex-row">
           <aside className="w-full border-b border-slate-200 bg-slate-50 p-5 lg:flex lg:w-[430px] lg:flex-col lg:border-b-0 lg:border-r">
             <div className="flex items-center justify-between">
               <div>
@@ -1052,7 +1202,7 @@ export function AppPage( ) {
           </aside>
 
           <main className="flex min-h-0 flex-1 flex-col bg-white">
-            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : (
+            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : panel === "profile" ? renderProfileMain() : (
               <div className="m-auto text-center text-slate-500">
                 <p className="text-xl font-medium">{panel === "contacts" ? "Gestiona tus contactos" : "Perfil de usuario"}</p>
                 <p className="text-base">{panel === "contacts" ? "Agrega por codigo, cambia alias y crea grupos." : "Personaliza tu cuenta y apariencia."}</p>
@@ -1108,7 +1258,7 @@ export function AppPage( ) {
         </div>
       </div>
 
-      {statusText ? <div className="mx-auto mt-4 max-w-[1700px] rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
+      {statusText ? <div className="mx-auto mt-3 w-full rounded-none bg-slate-900 px-4 py-3 text-sm text-white sm:mt-4 sm:rounded-xl">{statusText}</div> : null}
     </div>
   );
 }
