@@ -28,10 +28,14 @@ public sealed class SmtpEmailService : IEmailService
         }
 
         var message = new MimeMessage();
-        message.From.Add(MailboxAddress.Parse(_options.From));
+        message.From.Add(new MailboxAddress(_options.FromName, _options.From));
         message.To.Add(MailboxAddress.Parse(to));
         message.Subject = subject;
-        message.Body = new TextPart("html") { Text = htmlBody };
+        var bodyBuilder = new BodyBuilder
+        {
+            HtmlBody = htmlBody
+        };
+        message.Body = bodyBuilder.ToMessageBody();
 
         using var client = new SmtpClient();
         var socketOptions = _options.UseSsl ? SecureSocketOptions.SslOnConnect : SecureSocketOptions.StartTlsWhenAvailable;

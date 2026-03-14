@@ -59,6 +59,7 @@ public static class ServiceCollectionExtensions
 
         services.AddScoped<IJwtTokenService, JwtTokenService>();
         services.AddScoped<IEmailService, SmtpEmailService>();
+        services.AddScoped<IEmailTemplateService, EmailTemplateService>();
         services.AddScoped<IPasswordGenerator, PasswordGenerator>();
         services.AddScoped<IFileStorageService, LocalFileStorageService>();
         services.AddScoped<DatabaseSeeder>();

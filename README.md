@@ -79,7 +79,7 @@ Variables clave:
 - `JWT__Issuer`, `JWT__Audience`, `JWT__Key`
 - `ConnectionStrings__Default`
 - `Redis__ConnectionString`
-- `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`
+- `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`, `SMTP__FromName`
 - `UPLOADS__Path`, `UPLOADS__MaxMb`
 - `AI__Provider` (`groq`, `openai` o `anthropic`)
 - `GROQ__ApiKey`, `GROQ__Model`, `GROQ__BaseUrl`, `GROQ__MaxImageMb`
