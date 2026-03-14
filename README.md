@@ -81,16 +81,12 @@ Variables clave:
 - `Redis__ConnectionString`
 - `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`, `SMTP__FromName`
 - `UPLOADS__Path`, `UPLOADS__MaxMb`
-- `AI__Provider` (`groq`, `openai` o `anthropic`)
 - `GROQ__ApiKey`, `GROQ__Model`, `GROQ__BaseUrl`, `GROQ__MaxImageMb`
-- `OPENAI__ApiKey`, `OPENAI__Model`
-- `ANTHROPIC__ApiKey`, `ANTHROPIC__Model`, `ANTHROPIC__BaseUrl`, `ANTHROPIC__Version`, `ANTHROPIC__MaxTokens`
 - `ADMIN__SeedEmail`, `ADMIN__SeedPassword`
 
 Configuracion recomendada para el chatbot con Groq:
 
 ```bash
-AI__Provider=groq
 GROQ__ApiKey=tu_api_key
 GROQ__Model=meta-llama/llama-4-scout-17b-16e-instruct
 GROQ__BaseUrl=https://api.groq.com/openai/v1
