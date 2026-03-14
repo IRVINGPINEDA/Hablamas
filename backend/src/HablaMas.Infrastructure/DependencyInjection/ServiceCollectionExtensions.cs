@@ -24,6 +24,7 @@ public static class ServiceCollectionExtensions
         services.Configure<AdminOptions>(configuration.GetSection(AdminOptions.SectionName));
         services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
         services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
+        services.Configure<GroqOptions>(configuration.GetSection(GroqOptions.SectionName));
         services.Configure<AnthropicOptions>(configuration.GetSection(AnthropicOptions.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>

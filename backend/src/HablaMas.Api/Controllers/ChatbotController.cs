@@ -27,6 +27,7 @@ public sealed class ChatbotController : ControllerBase
 
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly AiOptions _aiOptions;
+    private readonly GroqOptions _groqOptions;
     private readonly OpenAiOptions _openAiOptions;
     private readonly AnthropicOptions _anthropicOptions;
     private readonly AppDbContext _dbContext;
@@ -35,6 +36,7 @@ public sealed class ChatbotController : ControllerBase
     public ChatbotController(
         IHttpClientFactory httpClientFactory,
         IOptions<AiOptions> aiOptions,
+        IOptions<GroqOptions> groqOptions,
         IOptions<OpenAiOptions> openAiOptions,
         IOptions<AnthropicOptions> anthropicOptions,
         AppDbContext dbContext,
@@ -42,6 +44,7 @@ public sealed class ChatbotController : ControllerBase
     {
         _httpClientFactory = httpClientFactory;
         _aiOptions = aiOptions.Value;
+        _groqOptions = groqOptions.Value;
         _openAiOptions = openAiOptions.Value;
         _anthropicOptions = anthropicOptions.Value;
         _dbContext = dbContext;
@@ -69,15 +72,37 @@ public sealed class ChatbotController : ControllerBase
         var provider = (_aiOptions.Provider ?? string.Empty).Trim().ToLowerInvariant();
         return provider switch
         {
-            "" => await SendWithOpenAiAsync(history, images, messageText),
+            "" => await SendWithGroqAsync(history, images, messageText),
+            "groq" => await SendWithGroqAsync(history, images, messageText),
             "openai" => await SendWithOpenAiAsync(history, images, messageText),
             "anthropic" or "claude" => await SendWithAnthropicAsync(history, images, messageText),
             _ => StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
             {
                 Title = "Unsupported AI provider",
-                Detail = "Configura AI:Provider con 'openai' o 'anthropic'."
+                Detail = "Configura AI:Provider con 'groq', 'openai' o 'anthropic'."
             })
         };
+    }
+
+    private Task<IActionResult> SendWithGroqAsync(
+        IReadOnlyCollection<ChatbotHistoryMessageRequest> history,
+        IReadOnlyCollection<ChatbotImageRequest> images,
+        string? messageText)
+    {
+        return SendWithOpenAiCompatibleAsync(
+            history,
+            images,
+            messageText,
+            providerName: "Groq",
+            apiKey: _groqOptions.ApiKey,
+            model: _groqOptions.Model,
+            baseUrl: _groqOptions.BaseUrl,
+            systemPrompt: _groqOptions.SystemPrompt,
+            maxImageMb: _groqOptions.MaxImageMb,
+            maxHistoryMessages: _groqOptions.MaxHistoryMessages,
+            missingKeyTitle: "Groq API key not configured",
+            quotaFallback: "Se alcanzo el limite de cuota en Groq.",
+            authFallback: "La configuracion de Groq no es valida.");
     }
 
     private async Task<IActionResult> SendWithOpenAiAsync(
@@ -85,108 +110,20 @@ public sealed class ChatbotController : ControllerBase
         IReadOnlyCollection<ChatbotImageRequest> images,
         string? messageText)
     {
-        if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
-        {
-            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails { Title = "OpenAI API key not configured" });
-        }
-
-        var (normalizedImages, imageError) = NormalizeImages(images, _openAiOptions.MaxImageMb);
-        if (imageError is not null)
-        {
-            return BadRequest(imageError);
-        }
-
-        var userContent = new List<object>();
-        if (!string.IsNullOrWhiteSpace(messageText))
-        {
-            userContent.Add(new { type = "text", text = messageText });
-        }
-
-        foreach (var image in normalizedImages!)
-        {
-            userContent.Add(new
-            {
-                type = "image_url",
-                image_url = new
-                {
-                    url = $"data:{image.ContentType};base64,{image.Base64Data}"
-                }
-            });
-        }
-
-        var messages = new List<object>();
-        if (!string.IsNullOrWhiteSpace(_openAiOptions.SystemPrompt))
-        {
-            messages.Add(new
-            {
-                role = "system",
-                content = _openAiOptions.SystemPrompt.Trim()
-            });
-        }
-
-        foreach (var item in history.TakeLast(_openAiOptions.MaxHistoryMessages))
-        {
-            var role = item.Role.Trim().ToLowerInvariant();
-            if (role is not ("user" or "assistant"))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(item.Content))
-            {
-                continue;
-            }
-
-            messages.Add(new
-            {
-                role,
-                content = item.Content.Trim()
-            });
-        }
-
-        messages.Add(new
-        {
-            role = "user",
-            content = userContent
-        });
-
-        var payload = new
-        {
-            model = _openAiOptions.Model,
-            messages
-        };
-
-        var client = _httpClientFactory.CreateClient("openai");
-        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_openAiOptions.BaseUrl.TrimEnd('/')}/chat/completions");
-        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
-        httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
-
-        using var response = await client.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted);
-        var rawResponse = await response.Content.ReadAsStringAsync(HttpContext.RequestAborted);
-        if (!response.IsSuccessStatusCode)
-        {
-            _logger.LogWarning("OpenAI request failed with status {StatusCode}. Payload: {Response}", (int)response.StatusCode, rawResponse);
-            var upstreamMessage = ExtractOpenAiError(rawResponse);
-            return BuildProviderError(
-                providerName: "OpenAI",
-                statusCode: response.StatusCode,
-                upstreamMessage: upstreamMessage,
-                quotaFallback: "Se alcanzo el limite de cuota en OpenAI.",
-                authFallback: "La configuracion de OpenAI no es valida.");
-        }
-
-        var reply = ExtractOpenAiReply(rawResponse);
-        if (string.IsNullOrWhiteSpace(reply))
-        {
-            _logger.LogWarning("OpenAI returned empty content. Payload: {Response}", rawResponse);
-            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = "OpenAI returned empty response" });
-        }
-
-        return Ok(new
-        {
-            reply,
-            model = _openAiOptions.Model
-        });
+        return await SendWithOpenAiCompatibleAsync(
+            history,
+            images,
+            messageText,
+            providerName: "OpenAI",
+            apiKey: _openAiOptions.ApiKey,
+            model: _openAiOptions.Model,
+            baseUrl: _openAiOptions.BaseUrl,
+            systemPrompt: _openAiOptions.SystemPrompt,
+            maxImageMb: _openAiOptions.MaxImageMb,
+            maxHistoryMessages: _openAiOptions.MaxHistoryMessages,
+            missingKeyTitle: "OpenAI API key not configured",
+            quotaFallback: "Se alcanzo el limite de cuota en OpenAI.",
+            authFallback: "La configuracion de OpenAI no es valida.");
     }
 
     private async Task<IActionResult> SendWithAnthropicAsync(
@@ -298,6 +235,120 @@ public sealed class ChatbotController : ControllerBase
         });
     }
 
+    private async Task<IActionResult> SendWithOpenAiCompatibleAsync(
+        IReadOnlyCollection<ChatbotHistoryMessageRequest> history,
+        IReadOnlyCollection<ChatbotImageRequest> images,
+        string? messageText,
+        string providerName,
+        string apiKey,
+        string model,
+        string baseUrl,
+        string systemPrompt,
+        int maxImageMb,
+        int maxHistoryMessages,
+        string missingKeyTitle,
+        string quotaFallback,
+        string authFallback)
+    {
+        if (string.IsNullOrWhiteSpace(apiKey))
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails { Title = missingKeyTitle });
+        }
+
+        var (normalizedImages, imageError) = NormalizeImages(images, maxImageMb);
+        if (imageError is not null)
+        {
+            return BadRequest(imageError);
+        }
+
+        var userContent = new List<object>();
+        if (!string.IsNullOrWhiteSpace(messageText))
+        {
+            userContent.Add(new { type = "text", text = messageText });
+        }
+
+        foreach (var image in normalizedImages!)
+        {
+            userContent.Add(new
+            {
+                type = "image_url",
+                image_url = new
+                {
+                    url = $"data:{image.ContentType};base64,{image.Base64Data}"
+                }
+            });
+        }
+
+        var messages = new List<object>();
+        if (!string.IsNullOrWhiteSpace(systemPrompt))
+        {
+            messages.Add(new
+            {
+                role = "system",
+                content = systemPrompt.Trim()
+            });
+        }
+
+        foreach (var item in history.TakeLast(maxHistoryMessages))
+        {
+            var role = item.Role.Trim().ToLowerInvariant();
+            if (role is not ("user" or "assistant"))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Content))
+            {
+                continue;
+            }
+
+            messages.Add(new
+            {
+                role,
+                content = item.Content.Trim()
+            });
+        }
+
+        messages.Add(new
+        {
+            role = "user",
+            content = userContent
+        });
+
+        var payload = new
+        {
+            model,
+            messages
+        };
+
+        var client = _httpClientFactory.CreateClient("openai");
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{baseUrl.TrimEnd('/')}/chat/completions");
+        httpRequest.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
+        httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted);
+        var rawResponse = await response.Content.ReadAsStringAsync(HttpContext.RequestAborted);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("{ProviderName} request failed with status {StatusCode}. Payload: {Response}", providerName, (int)response.StatusCode, rawResponse);
+            var upstreamMessage = ExtractOpenAiCompatibleError(rawResponse);
+            return BuildProviderError(providerName, response.StatusCode, upstreamMessage, quotaFallback, authFallback);
+        }
+
+        var reply = ExtractOpenAiCompatibleReply(rawResponse);
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            _logger.LogWarning("{ProviderName} returned empty content. Payload: {Response}", providerName, rawResponse);
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = $"{providerName} returned empty response" });
+        }
+
+        return Ok(new
+        {
+            reply,
+            model
+        });
+    }
+
     private IActionResult BuildProviderError(
         string providerName,
         HttpStatusCode statusCode,
@@ -365,7 +416,7 @@ public sealed class ChatbotController : ControllerBase
         return (normalizedImages, null);
     }
 
-    private static string? ExtractOpenAiReply(string rawJson)
+    private static string? ExtractOpenAiCompatibleReply(string rawJson)
     {
         using var doc = JsonDocument.Parse(rawJson);
         if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.ValueKind != JsonValueKind.Array || choices.GetArrayLength() == 0)
@@ -413,7 +464,7 @@ public sealed class ChatbotController : ControllerBase
         return builder.ToString().Trim();
     }
 
-    private static string? ExtractOpenAiError(string rawJson)
+    private static string? ExtractOpenAiCompatibleError(string rawJson)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
         {

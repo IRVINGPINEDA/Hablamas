@@ -35,7 +35,11 @@ services:
       SMTP__From: ${SMTP__From}
       UPLOADS__Path: ${UPLOADS__Path}
       UPLOADS__MaxMb: ${UPLOADS__MaxMb}
-      AI__Provider: ${AI__Provider:-openai}
+      AI__Provider: ${AI__Provider:-groq}
+      GROQ__ApiKey: ${GROQ__ApiKey}
+      GROQ__Model: ${GROQ__Model:-meta-llama/llama-4-scout-17b-16e-instruct}
+      GROQ__BaseUrl: ${GROQ__BaseUrl:-https://api.groq.com/openai/v1}
+      GROQ__MaxImageMb: ${GROQ__MaxImageMb:-4}
       OPENAI__ApiKey: ${OPENAI__ApiKey}
       OPENAI__Model: ${OPENAI__Model}
       ANTHROPIC__ApiKey: ${ANTHROPIC__ApiKey}

@@ -81,10 +81,23 @@ Variables clave:
 - `Redis__ConnectionString`
 - `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`
 - `UPLOADS__Path`, `UPLOADS__MaxMb`
-- `AI__Provider` (`openai` o `anthropic`)
+- `AI__Provider` (`groq`, `openai` o `anthropic`)
+- `GROQ__ApiKey`, `GROQ__Model`, `GROQ__BaseUrl`, `GROQ__MaxImageMb`
 - `OPENAI__ApiKey`, `OPENAI__Model`
 - `ANTHROPIC__ApiKey`, `ANTHROPIC__Model`, `ANTHROPIC__BaseUrl`, `ANTHROPIC__Version`, `ANTHROPIC__MaxTokens`
 - `ADMIN__SeedEmail`, `ADMIN__SeedPassword`
+
+Configuracion recomendada para el chatbot con Groq:
+
+```bash
+AI__Provider=groq
+GROQ__ApiKey=tu_api_key
+GROQ__Model=meta-llama/llama-4-scout-17b-16e-instruct
+GROQ__BaseUrl=https://api.groq.com/openai/v1
+GROQ__MaxImageMb=4
+```
+
+`meta-llama/llama-4-scout-17b-16e-instruct` es una buena opcion inicial porque soporta texto e imagenes, que coincide con el flujo multimodal ya implementado en la app. El limite de imagen para Groq se dejo en 4 MB porque este proyecto envia imagenes en base64 al endpoint compatible con OpenAI.
 
 ## Levantar en desarrollo (local)
 
