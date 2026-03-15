@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, RefObject } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
@@ -32,9 +32,41 @@ interface UploadedAttachment {
   attachmentSizeBytes?: number;
 }
 
-type ChatRenderableMessage = Pick<MessageDto, "id" | "type" | "text" | "imageUrl" | "attachmentUrl" | "attachmentName" | "attachmentContentType" | "attachmentSizeBytes" | "createdAt">;
+type ChatRenderableMessage = Pick<
+  MessageDto,
+  | "id"
+  | "type"
+  | "text"
+  | "imageUrl"
+  | "attachmentUrl"
+  | "attachmentName"
+  | "attachmentContentType"
+  | "attachmentSizeBytes"
+  | "createdAt"
+>;
 type Panel = "chats" | "groups" | "contacts" | "profile";
 type ThemeMode = "light" | "dark";
+type InboxFilter = "all" | "chats" | "groups";
+
+type SidebarThreadItem =
+  | {
+      kind: "chat";
+      id: string;
+      name: string;
+      preview: string;
+      previewDate: string;
+      profileImageUrl?: string;
+      online: boolean;
+      unreadCount: number;
+    }
+  | {
+      kind: "group";
+      id: string;
+      name: string;
+      preview: string;
+      previewDate: string;
+      memberCount: number;
+    };
 
 interface IconProps {
   className?: string;
@@ -47,16 +79,30 @@ interface AvatarProps {
   size?: "md" | "lg";
 }
 
-interface ThemeToggleProps {
-  mode: ThemeMode;
-  onToggle: () => void;
+interface SidebarNavButtonProps {
+  active?: boolean;
+  badge?: ReactNode;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
 }
 
-interface SidebarNavButtonProps {
-  active: boolean;
-  badge?: ReactNode;
-  description: string;
+interface SidebarFooterButtonProps {
   icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+interface RailButtonProps {
+  active?: boolean;
+  badge?: ReactNode;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+interface ChatFilterChipProps {
+  active: boolean;
   label: string;
   onClick: () => void;
 }
@@ -65,20 +111,25 @@ interface ChatHeaderProps {
   aside?: ReactNode;
   avatar: ReactNode;
   eyebrow: string;
+  leadingAction?: ReactNode;
   statusRow?: ReactNode;
   subtitle: ReactNode;
   title: string;
 }
 
 interface MessageViewportProps {
+  bottomRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
+  contentRef: RefObject<HTMLDivElement | null>;
   emptyState: ReactNode;
+  onScroll: () => void;
+  scrollAction?: ReactNode;
   viewportRef: RefObject<HTMLDivElement | null>;
 }
 
 interface MessageBubbleProps {
   message: ChatRenderableMessage;
-  meta: string;
+  meta: ReactNode;
   own: boolean;
   renderContent: (message: ChatRenderableMessage) => ReactNode;
   senderLabel?: string;
@@ -98,12 +149,19 @@ interface MessageComposerProps {
 }
 
 const THEME_STORAGE_KEY = "hablamas_app_theme";
-const ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
+const ATTACHMENT_ACCEPT =
+  "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
 
 function ChatIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M8 10h8M8 14h5m-7 6 2.8-3.2A3 3 0 0 1 11 16h7a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H6A3 3 0 0 0 3 6v7a3 3 0 0 0 3 3v4Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M8 10h8M8 14h5m-7 6 2.8-3.2A3 3 0 0 1 11 16h7a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H6A3 3 0 0 0 3 6v7a3 3 0 0 0 3 3v4Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -111,7 +169,13 @@ function ChatIcon({ className }: IconProps) {
 function GroupIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm8 2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm8 2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -119,15 +183,13 @@ function GroupIcon({ className }: IconProps) {
 function ContactIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M20 21a8 8 0 1 0-16 0m12-11a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
-function ProfileIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm7 9a7 7 0 0 0-14 0" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M20 21a8 8 0 1 0-16 0m12-11a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -135,7 +197,13 @@ function ProfileIcon({ className }: IconProps) {
 function BotIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M9 3h6m-3 0v4m-7 4h14m-1 10H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2ZM9 15h.01M15 15h.01" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M9 3h6m-3 0v4m-7 4h14m-1 10H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2ZM9 15h.01M15 15h.01"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -143,7 +211,13 @@ function BotIcon({ className }: IconProps) {
 function SunIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 3v2.25M12 18.75V21M4.97 4.97l1.6 1.6m10.86 10.86 1.6 1.6M3 12h2.25m13.5 0H21M4.97 19.03l1.6-1.6m10.86-10.86 1.6-1.6M15.75 12A3.75 3.75 0 1 1 12 8.25 3.75 3.75 0 0 1 15.75 12Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M12 3v2.25M12 18.75V21M4.97 4.97l1.6 1.6m10.86 10.86 1.6 1.6M3 12h2.25m13.5 0H21M4.97 19.03l1.6-1.6m10.86-10.86 1.6-1.6M15.75 12A3.75 3.75 0 1 1 12 8.25 3.75 3.75 0 0 1 15.75 12Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
@@ -151,24 +225,188 @@ function SunIcon({ className }: IconProps) {
 function MoonIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      <path
+        d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
     </svg>
   );
 }
 
-const panelLabels: Record<Panel, string> = {
-  chats: "Chats",
-  groups: "Grupos",
-  contacts: "Contactos",
-  profile: "Perfil"
-};
+function MenuIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4 7h16M4 12h16M4 17h16"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
 
-const panelDescriptions: Record<Panel, string> = {
-  chats: "Mensajes privados en tiempo real.",
-  groups: "Salas activas y nuevos grupos.",
-  contacts: "Agenda, alias y presencia.",
-  profile: "Tema, bio y foto de perfil."
-};
+function PlusIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m7 10 5 5 5-5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function StatusChecks({
+  className,
+  status
+}: {
+  className?: string;
+  status: "Sent" | "Delivered" | "Seen";
+}) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 20 20">
+      <path
+        d="m4.5 10.2 2.1 2.1 4.1-4.8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      {status !== "Sent" ? (
+        <path
+          d="m9.2 10.2 2.1 2.1 4.1-4.8"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.8"
+        />
+      ) : null}
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SettingsIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m10.33 4.32 1.15-1.93a.6.6 0 0 1 1.04 0l1.15 1.93a.6.6 0 0 0 .72.27l2.16-.7a.6.6 0 0 1 .77.48l.3 2.22a.6.6 0 0 0 .48.51l2.2.42a.6.6 0 0 1 .34.98l-1.49 1.67a.6.6 0 0 0-.1.67l1 2a.6.6 0 0 1-.43.86l-2.2.42a.6.6 0 0 0-.48.51l-.3 2.22a.6.6 0 0 1-.77.48l-2.16-.7a.6.6 0 0 0-.72.27l-1.15 1.93a.6.6 0 0 1-1.04 0l-1.15-1.93a.6.6 0 0 0-.72-.27l-2.16.7a.6.6 0 0 1-.77-.48l-.3-2.22a.6.6 0 0 0-.48-.51l-2.2-.42a.6.6 0 0 1-.43-.86l1-2a.6.6 0 0 0-.1-.67L2.36 8.5a.6.6 0 0 1 .34-.98l2.2-.42a.6.6 0 0 0 .48-.51l.3-2.22a.6.6 0 0 1 .77-.48l2.16.7a.6.6 0 0 0 .72-.27Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M15 17l5-5-5-5M20 12H9m5 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function DotsIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="currentColor" viewBox="0 0 24 24">
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 8h.01M10.75 12h1.25v4h1.25M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SmileIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M8.5 14.5s1.35 1.5 3.5 1.5 3.5-1.5 3.5-1.5M9 9.5h.01M15 9.5h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SendIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m3 20 18-8L3 4v6l10 2-10 2v6Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
 
 function getStoredTheme(): ThemeMode | null {
   if (typeof window === "undefined") {
@@ -258,7 +496,11 @@ function getAttachmentUrl(message: ChatAttachmentDto): string | undefined {
   return message.attachmentUrl || message.imageUrl;
 }
 
-function getMessagePreview(message?: { type: ChatMessageType; text?: string; attachmentName?: string }): string {
+function getMessagePreview(message?: {
+  type: ChatMessageType;
+  text?: string;
+  attachmentName?: string;
+}): string {
   if (!message) {
     return "Sin mensajes";
   }
@@ -295,7 +537,12 @@ function Avatar({ name, src, online, size = "md" }: AvatarProps) {
           src={src}
         />
       ) : (
-        <div className={clsx(sizeClasses, "flex items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700 ring-2 ring-white/40")}>
+        <div
+          className={clsx(
+            sizeClasses,
+            "flex items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700 ring-2 ring-white/40"
+          )}
+        >
           {getInitials(name)}
         </div>
       )}
@@ -312,48 +559,29 @@ function Avatar({ name, src, online, size = "md" }: AvatarProps) {
   );
 }
 
-function ThemeToggle({ mode, onToggle }: ThemeToggleProps) {
-  const dark = mode === "dark";
-
+function SidebarNavButton({
+  active,
+  badge,
+  icon,
+  label,
+  onClick
+}: SidebarNavButtonProps) {
   return (
     <button
-      aria-label={dark ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
-      className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-white/10 px-3 py-2 text-xs font-semibold text-white transition hover:bg-white/20"
-      onClick={onToggle}
-      type="button"
-    >
-      {dark ? <SunIcon className="h-4 w-4" /> : <MoonIcon className="h-4 w-4" />}
-      <span>{dark ? "Claro" : "Oscuro"}</span>
-    </button>
-  );
-}
-
-function SidebarNavButton({ active, badge, description, icon, label, onClick }: SidebarNavButtonProps) {
-  return (
-    <button
+      aria-label={label}
       className={clsx(
-        "group flex w-full items-center gap-3 rounded-[24px] border px-4 py-3 text-left transition",
+        "group inline-flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition",
         active
-          ? "border-transparent bg-[linear-gradient(135deg,#4f6573,#27343d)] text-white shadow-[0_22px_44px_-28px_rgba(15,23,42,0.7)]"
-          : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] text-[var(--app-text)] hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
+          ? "bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]"
+          : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
       )}
       onClick={onClick}
       type="button"
     >
-      <span
-        className={clsx(
-          "flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl transition",
-          active ? "bg-white/15 text-white" : "bg-brand-50 text-brand-700 group-hover:bg-brand-100"
-        )}
-      >
-        {icon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-sm font-semibold">{label}</span>
-        <span className={clsx("mt-0.5 block truncate text-xs", active ? "text-white/72" : "text-[var(--app-subtle-text)]")}>{description}</span>
-      </span>
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
       {badge ? (
-        <span className={clsx("rounded-full px-2.5 py-1 text-[11px] font-semibold", active ? "bg-white/15 text-white" : "bg-brand-50 text-brand-700")}>
+        <span className="ml-auto inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
           {badge}
         </span>
       ) : null}
@@ -361,57 +589,208 @@ function SidebarNavButton({ active, badge, description, icon, label, onClick }: 
   );
 }
 
-function ChatHeader({ aside, avatar, eyebrow, statusRow, subtitle, title }: ChatHeaderProps) {
+function SidebarFooterButton({
+  icon,
+  label,
+  onClick
+}: SidebarFooterButtonProps) {
   return (
-    <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <button
+      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="shrink-0">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function RailButton({ active, badge, icon, label, onClick }: RailButtonProps) {
+  return (
+    <button
+      aria-label={label}
+      className={clsx(
+        "relative flex h-11 w-11 items-center justify-center rounded-2xl transition",
+        active
+          ? "bg-[var(--chat-item-active)] text-[#25d366]"
+          : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      )}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {icon}
+      {badge ? (
+        <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ChatFilterChip({ active, label, onClick }: ChatFilterChipProps) {
+  return (
+    <button
+      className={clsx(
+        "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+        active
+          ? "bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.22)]"
+          : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function HeaderActionButton({
+  icon,
+  label,
+  onClick
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+    </button>
+  );
+}
+
+function ChatHeader({
+  aside,
+  avatar,
+  eyebrow,
+  leadingAction,
+  statusRow,
+  subtitle,
+  title
+}: ChatHeaderProps) {
+  return (
+    <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
+          {leadingAction ? <div className="lg:hidden">{leadingAction}</div> : null}
           {avatar}
           <div className="min-w-0">
-            <p className="eyebrow-label">{eyebrow}</p>
-            <h2 className="mt-2 truncate text-xl font-bold text-[var(--app-text)]">{title}</h2>
-            <div className="mt-2 text-sm text-[var(--app-subtle-text)]">{subtitle}</div>
-            {statusRow ? <div className="mt-3 flex flex-wrap items-center gap-2">{statusRow}</div> : null}
+            {eyebrow ? (
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--app-subtle-text)]">
+                {eyebrow}
+              </p>
+            ) : null}
+            <p className="truncate text-[15px] font-semibold text-[var(--app-text)]">{title}</p>
+            <div className="mt-0.5 text-xs text-[var(--app-subtle-text)]">{subtitle}</div>
+            {statusRow ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">{statusRow}</div>
+            ) : null}
           </div>
         </div>
-        {aside ? <div className="flex max-w-full flex-wrap items-center gap-2">{aside}</div> : null}
+        {aside ? (
+          <div className="flex max-w-full flex-wrap items-center gap-1">{aside}</div>
+        ) : null}
       </div>
     </header>
   );
 }
 
-function MessageViewport({ children, emptyState, viewportRef }: MessageViewportProps) {
+function ScrollToBottomButton({
+  count,
+  onClick
+}: {
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[#25d366] px-4 py-2 text-sm font-semibold text-[#072a18] shadow-[0_16px_30px_-20px_rgba(7,42,24,0.55)] transition hover:bg-[#20bd5c]"
+      onClick={onClick}
+      type="button"
+    >
+      <ChevronDownIcon className="h-4 w-4" />
+      <span>{count > 1 ? `${count} nuevos mensajes` : "Nuevo mensaje"}</span>
+    </button>
+  );
+}
+
+function MessageViewport({
+  bottomRef,
+  children,
+  contentRef,
+  emptyState,
+  onScroll,
+  scrollAction,
+  viewportRef
+}: MessageViewportProps) {
   const hasContent = Array.isArray(children) ? children.length > 0 : Boolean(children);
 
   return (
-    <section
-      className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-4 py-5 sm:px-6"
-      ref={viewportRef}
-    >
-      <div className="flex min-h-full flex-col justify-end gap-3">
-        {hasContent ? children : emptyState}
+    <section className="relative min-h-0 flex-1">
+      <div
+        className="chat-pattern min-h-0 h-full overflow-y-auto bg-[var(--chat-canvas)] px-4 py-5 sm:px-6"
+        onScroll={onScroll}
+        ref={viewportRef}
+      >
+        <div className="flex min-h-full flex-col justify-end gap-3" ref={contentRef}>
+          {hasContent ? children : emptyState}
+          <div ref={bottomRef} />
+        </div>
       </div>
+      {scrollAction ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+          {scrollAction}
+        </div>
+      ) : null}
     </section>
   );
 }
 
-function MessageBubble({ message, meta, own, renderContent, senderLabel }: MessageBubbleProps) {
+function MessageBubble({
+  message,
+  meta,
+  own,
+  renderContent,
+  senderLabel
+}: MessageBubbleProps) {
   const attachment = message.type !== "text";
 
   return (
     <article className={clsx("flex w-full", own ? "justify-end" : "justify-start")}>
       <div
         className={clsx(
-          "w-fit max-w-[min(92%,46rem)] rounded-[28px] border shadow-[0_24px_48px_-32px_rgba(15,23,42,0.45)]",
+          "w-fit max-w-[min(92%,44rem)] border shadow-[0_18px_30px_-24px_rgba(0,0,0,0.35)]",
           own
-            ? "rounded-br-lg border-transparent bg-[linear-gradient(135deg,var(--bubble-own-from),var(--bubble-own-to))] text-[var(--bubble-own-text)]"
-            : "rounded-bl-lg border-[var(--bubble-peer-border)] bg-[var(--bubble-peer-bg)] text-[var(--bubble-peer-text)]",
+            ? "rounded-[18px] rounded-br-[6px] border-transparent bg-[linear-gradient(135deg,var(--bubble-own-from),var(--bubble-own-to))] text-[var(--bubble-own-text)]"
+            : "rounded-[18px] rounded-bl-[6px] border-[var(--bubble-peer-border)] bg-[var(--bubble-peer-bg)] text-[var(--bubble-peer-text)]",
           attachment ? "px-3 py-3" : "px-4 py-3.5"
         )}
       >
-        {senderLabel ? <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-700">{senderLabel}</p> : null}
+        {senderLabel ? (
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-700">
+            {senderLabel}
+          </p>
+        ) : null}
         {renderContent(message)}
-        <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-[var(--bubble-own-muted)]" : "text-[var(--bubble-peer-muted)]")}>{meta}</p>
+        <div
+          className={clsx(
+            "mt-2 flex items-center gap-1 text-[10px] font-medium",
+            own
+              ? "justify-end text-[var(--bubble-own-muted)]"
+              : "justify-start text-[var(--bubble-peer-muted)]"
+          )}
+        >
+          {meta}
+        </div>
       </div>
     </article>
   );
@@ -430,46 +809,96 @@ function MessageComposer({
   placeholder
 }: MessageComposerProps) {
   return (
-    <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-4 py-4 backdrop-blur-xl sm:px-6">
-      <form className="flex flex-col gap-3 xl:flex-row xl:items-center" onSubmit={onSubmit}>
-        <div className="flex min-w-0 flex-1 items-center rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.12)]">
-          <input
-            className="w-full bg-transparent px-3 py-2 text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)] disabled:cursor-not-allowed"
+    <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--composer-bg)] px-4 py-3 backdrop-blur-xl sm:px-5">
+      <form className="flex items-end gap-2" onSubmit={onSubmit}>
+        <button
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+          disabled={disabled}
+          type="button"
+        >
+          <SmileIcon className="h-5 w-5" />
+        </button>
+
+        <label
+          className={clsx(
+            "flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]",
+            disabled ? "pointer-events-none opacity-60" : undefined
+          )}
+        >
+          <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+          <input accept={attachmentAccept} className="hidden" onChange={onAttachment} type="file" />
+        </label>
+
+        <div className="flex min-w-0 flex-1 items-end rounded-[26px] bg-[var(--composer-input-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <textarea
+            className="max-h-32 min-h-[24px] w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)] disabled:cursor-not-allowed"
             disabled={disabled}
             onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (canSend && !disabled) {
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }
+            }}
             placeholder={placeholder}
+            rows={1}
             value={inputValue}
           />
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <label className={clsx("secondary-button cursor-pointer", disabled ? "pointer-events-none opacity-60" : undefined)}>
-            Adjuntar
-            <input accept={attachmentAccept} className="hidden" onChange={onAttachment} type="file" />
-          </label>
+        <button
+          className={clsx(
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition",
+            isRecordingVoice
+              ? "bg-rose-500 text-white hover:bg-rose-600"
+              : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+          )}
+          disabled={disabled}
+          onClick={onToggleVoice}
+          type="button"
+        >
+          <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <path
+              d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Zm0 0v-1m0 14v4m-5-9a5 5 0 0 0 10 0"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+        </button>
 
-          <button
-            className={clsx(
-              "secondary-button",
-              isRecordingVoice ? "border-rose-400 bg-rose-50 text-rose-700" : undefined
-            )}
-            disabled={disabled}
-            onClick={onToggleVoice}
-            type="button"
-          >
-            {isRecordingVoice ? "Detener voz" : "Grabar voz"}
-          </button>
-
-          <button className="primary-button min-w-[132px]" disabled={!canSend || disabled} type="submit">
-            Enviar
-          </button>
-        </div>
+        <button
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-[#041b10] shadow-[0_16px_30px_-18px_rgba(37,211,102,0.45)] transition hover:bg-[#31e476] disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={!canSend || disabled}
+          type="submit"
+        >
+          <SendIcon className="h-5 w-5" />
+        </button>
       </form>
     </footer>
   );
 }
 
-function EmptyMessagingState({ eyebrow, title, description }: { description: string; eyebrow: string; title: string }) {
+function EmptyMessagingState({
+  eyebrow,
+  title,
+  description
+}: {
+  description: string;
+  eyebrow: string;
+  title: string;
+}) {
   return (
     <div className="m-auto max-w-md rounded-[32px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-8 text-center">
       <p className="eyebrow-label">{eyebrow}</p>
@@ -482,7 +911,7 @@ function EmptyMessagingState({ eyebrow, title, description }: { description: str
 export function AppPage() {
   const { user, logout, refreshProfile } = useAuth();
   const [panel, setPanel] = useState<Panel>("chats");
-  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredTheme() ?? "light");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredTheme() ?? "dark");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [groupChats, setGroupChats] = useState<GroupChatSummary[]>([]);
@@ -493,12 +922,21 @@ export function AppPage() {
   const [groupMembers, setGroupMembers] = useState<GroupMemberDto[]>([]);
   const [typingByConversation, setTypingByConversation] = useState<Record<string, string>>({});
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
+  const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({});
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("chats");
   const [messageInput, setMessageInput] = useState("");
-  const [connectionState, setConnectionState] = useState<HubConnectionState>(HubConnectionState.Disconnected);
+  const [connectionState, setConnectionState] = useState<HubConnectionState>(
+    HubConnectionState.Disconnected
+  );
   const [addingCode, setAddingCode] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showGroupCreator, setShowGroupCreator] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [pendingNewMessageCount, setPendingNewMessageCount] = useState(0);
   const [profile, setProfile] = useState<ProfileForm>({
     bio: "",
     publicAlias: "",
@@ -512,7 +950,13 @@ export function AppPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
-  const messageViewportRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesContentRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const previousThreadKeyRef = useRef("");
+  const previousMessageCountRef = useRef(0);
+  const forceScrollRef = useRef(false);
+  const stickToBottomRef = useRef(true);
 
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
@@ -533,9 +977,87 @@ export function AppPage() {
   const composerEnabled = panel === "groups" ? Boolean(currentGroup) : Boolean(currentConversation);
   const canSendMessage = messageInput.trim().length > 0;
 
+  const activeMessages = useMemo(
+    () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
+    [groupMessages, messages, panel]
+  );
+
+  const inboxThreads = useMemo<SidebarThreadItem[]>(() => {
+    const query = chatSearchQuery.trim().toLowerCase();
+
+    const chatItems: SidebarThreadItem[] = conversations.map((conversation) => ({
+      id: conversation.id,
+      kind: "chat",
+      name: conversation.contact.alias || conversation.contact.publicAlias,
+      online: Boolean(presenceByUser[conversation.contact.id]),
+      preview: getMessagePreview(conversation.lastMessage),
+      previewDate: conversation.lastMessageAt ?? conversation.createdAt,
+      profileImageUrl: conversation.contact.profileImageUrl,
+      unreadCount: unreadByConversation[conversation.id] ?? 0
+    }));
+
+    const groupItems: SidebarThreadItem[] = groupChats.map((group) => ({
+      id: group.id,
+      kind: "group",
+      name: group.name,
+      memberCount: group.memberCount,
+      preview: getMessagePreview(group.lastMessage),
+      previewDate: group.lastMessageAt ?? group.createdAt
+    }));
+
+    return [...chatItems, ...groupItems]
+      .filter((item) => {
+        if (inboxFilter === "chats" && item.kind !== "chat") {
+          return false;
+        }
+
+        if (inboxFilter === "groups" && item.kind !== "group") {
+          return false;
+        }
+
+        if (query.length === 0) {
+          return true;
+        }
+
+        return (
+          item.name.toLowerCase().includes(query) || item.preview.toLowerCase().includes(query)
+        );
+      })
+      .sort(
+        (a, b) => new Date(b.previewDate).getTime() - new Date(a.previewDate).getTime()
+      );
+  }, [chatSearchQuery, conversations, groupChats, inboxFilter, presenceByUser, unreadByConversation]);
+
+  const activeThreadKey = useMemo(
+    () =>
+      panel === "groups"
+        ? `group:${selectedGroupId ?? "none"}`
+        : panel === "chats"
+          ? `chat:${selectedConversationId ?? "none"}`
+          : panel,
+    [panel, selectedConversationId, selectedGroupId]
+  );
+
   const applyThemeMode = (mode: ThemeMode): void => {
     setThemeMode(mode);
     setProfile((prev) => ({ ...prev, theme: toThemeNumber(mode) }));
+  };
+
+  const isNearBottom = (): boolean => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return true;
+    }
+
+    const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distance < 120;
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth"): void => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
   };
 
   useEffect(() => {
@@ -568,9 +1090,29 @@ export function AppPage() {
     return () => window.clearTimeout(timer);
   }, [statusText]);
 
-  useEffect(() => () => {
-    mediaRecorderRef.current?.stop();
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  useEffect(
+    () => () => {
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncSidebarState = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+
+    syncSidebarState();
+    window.addEventListener("resize", syncSidebarState);
+
+    return () => window.removeEventListener("resize", syncSidebarState);
   }, []);
 
   useEffect(() => {
@@ -578,17 +1120,77 @@ export function AppPage() {
       return;
     }
 
-    const viewport = messageViewportRef.current;
-    if (!viewport) {
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, [messagingPanel, selectedConversationId, selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => {
-      viewport.scrollTop = viewport.scrollHeight;
+    setUnreadByConversation((prev) => {
+      if (!(selectedConversationId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[selectedConversationId];
+      return next;
+    });
+  }, [selectedConversationId]);
+
+  useLayoutEffect(() => {
+    if (!messagingPanel) {
+      return;
+    }
+
+    const threadChanged = previousThreadKeyRef.current !== activeThreadKey;
+    const previousCount = threadChanged ? 0 : previousMessageCountRef.current;
+    const nextCount = activeMessages.length;
+    const addedMessages = Math.max(0, nextCount - previousCount);
+
+    if (forceScrollRef.current || threadChanged) {
+      scrollToBottom("auto");
+      forceScrollRef.current = false;
+    } else if (addedMessages > 0) {
+      if (stickToBottomRef.current || isNearBottom()) {
+        scrollToBottom("smooth");
+      } else {
+        setPendingNewMessageCount((prev) => prev + addedMessages);
+        setShowScrollToBottom(true);
+      }
+    }
+
+    previousThreadKeyRef.current = activeThreadKey;
+    previousMessageCountRef.current = nextCount;
+  }, [activeMessages.length, activeThreadKey, messagingPanel]);
+
+  useEffect(() => {
+    if (!messagingPanel || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const content = messagesContentRef.current;
+    if (!content) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        scrollToBottom("auto");
+      }
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [messagingPanel, selectedConversationId, selectedGroupId, messages.length, groupMessages.length]);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeThreadKey, messagingPanel]);
 
   const loadSidebar = async (): Promise<void> => {
     const [chatsResponse, contactsResponse] = await Promise.all([
@@ -618,7 +1220,8 @@ export function AppPage() {
 
   const loadProfile = async (): Promise<void> => {
     const response = await authApi.get("/profile/me");
-    const nextTheme = getStoredTheme() ?? (Number(response.data.theme) === 2 ? "dark" : "light");
+    const nextTheme =
+      getStoredTheme() ?? (Number(response.data.theme) === 1 ? "light" : "dark");
 
     setProfile({
       bio: response.data.bio ?? "",
@@ -636,7 +1239,10 @@ export function AppPage() {
 
     const last = items[items.length - 1];
     if (last) {
-      await authApi.post(`/chats/${conversationId}/mark-seen`, { lastSeenMessageId: last.id });
+      await authApi.post(`/chats/${conversationId}/mark-seen`, {
+        lastSeenMessageId: last.id
+      });
+
       const connection = connectionRef.current;
       if (connection && connection.state === HubConnectionState.Connected) {
         await connection.invoke("MarkSeen", conversationId, last.id);
@@ -682,9 +1288,11 @@ export function AppPage() {
       return;
     }
 
-    Promise.all([loadGroupMessages(selectedGroupId), loadGroupMembers(selectedGroupId)]).catch(() => {
-      setStatusText("No fue posible cargar el grupo.");
-    });
+    Promise.all([loadGroupMessages(selectedGroupId), loadGroupMembers(selectedGroupId)]).catch(
+      () => {
+        setStatusText("No fue posible cargar el grupo.");
+      }
+    );
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -709,6 +1317,20 @@ export function AppPage() {
     connectionRef.current = connection;
 
     connection.on("message:new", (payload: { conversationId: string; message: MessageDto }) => {
+      const isActiveConversation = selectedConversationRef.current === payload.conversationId;
+      const shouldFollow = isActiveConversation ? isNearBottom() : false;
+
+      if (!isActiveConversation && payload.message.senderId !== user.id) {
+        setUnreadByConversation((prev) => ({
+          ...prev,
+          [payload.conversationId]: (prev[payload.conversationId] ?? 0) + 1
+        }));
+      }
+
+      if (isActiveConversation) {
+        stickToBottomRef.current = shouldFollow;
+      }
+
       setConversations((prev) => {
         const existing = prev.find((item) => item.id === payload.conversationId);
         if (!existing) {
@@ -736,7 +1358,9 @@ export function AppPage() {
             : item
         );
 
-        return [...next].sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));
+        return [...next].sort((a, b) =>
+          (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt)
+        );
       });
 
       if (selectedConversationRef.current === payload.conversationId) {
@@ -751,36 +1375,54 @@ export function AppPage() {
       }
     });
 
-    connection.on("message:status", (payload: { messageId?: string; status: "Sent" | "Delivered" | "Seen"; conversationId: string }) => {
-      if (selectedConversationRef.current !== payload.conversationId) {
-        return;
-      }
-
-      setMessages((prev) => {
-        if (payload.messageId) {
-          return prev.map((message) => (message.id === payload.messageId ? { ...message, status: payload.status } : message));
+    connection.on(
+      "message:status",
+      (payload: {
+        messageId?: string;
+        status: "Sent" | "Delivered" | "Seen";
+        conversationId: string;
+      }) => {
+        if (selectedConversationRef.current !== payload.conversationId) {
+          return;
         }
 
-        return prev.map((message) => (message.senderId === user.id ? { ...message, status: payload.status } : message));
-      });
-    });
+        setMessages((prev) => {
+          if (payload.messageId) {
+            return prev.map((message) =>
+              message.id === payload.messageId ? { ...message, status: payload.status } : message
+            );
+          }
 
-    connection.on("typing:update", (payload: { conversationId: string; userId: string; isTyping: boolean }) => {
-      if (!payload.isTyping) {
-        setTypingByConversation((prev) => {
-          const copy = { ...prev };
-          delete copy[payload.conversationId];
-          return copy;
+          return prev.map((message) =>
+            message.senderId === user.id ? { ...message, status: payload.status } : message
+          );
         });
-        return;
       }
+    );
 
-      const contact = contactsRef.current.find((item) => item.contactUser.id === payload.userId);
-      setTypingByConversation((prev) => ({
-        ...prev,
-        [payload.conversationId]: contact?.alias || contact?.contactUser.publicAlias || "Escribiendo"
-      }));
-    });
+    connection.on(
+      "typing:update",
+      (payload: { conversationId: string; userId: string; isTyping: boolean }) => {
+        if (!payload.isTyping) {
+          setTypingByConversation((prev) => {
+            const copy = { ...prev };
+            delete copy[payload.conversationId];
+            return copy;
+          });
+          return;
+        }
+
+        const contact = contactsRef.current.find(
+          (item) => item.contactUser.id === payload.userId
+        );
+
+        setTypingByConversation((prev) => ({
+          ...prev,
+          [payload.conversationId]:
+            contact?.alias || contact?.contactUser.publicAlias || "Escribiendo"
+        }));
+      }
+    );
 
     connection.on("presence:update", (payload: { userId: string; online: boolean }) => {
       setPresenceByUser((prev) => ({
@@ -865,6 +1507,8 @@ export function AppPage() {
     }
 
     const text = messageInput.trim();
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setMessageInput("");
 
     if (panel === "groups") {
@@ -952,6 +1596,8 @@ export function AppPage() {
     }
 
     try {
+      forceScrollRef.current = true;
+      stickToBottomRef.current = true;
       const uploaded = await uploadAttachment(file);
       await sendUploadedAttachment(uploaded);
       setStatusText("Adjunto enviado.");
@@ -970,7 +1616,11 @@ export function AppPage() {
       return;
     }
 
-    if (typeof window === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof window === "undefined" ||
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setStatusText("Tu navegador no soporta notas de voz.");
       return;
     }
@@ -1020,11 +1670,9 @@ export function AppPage() {
         return;
       }
 
-      const voiceFile = new File(
-        [blob],
-        `nota-de-voz-${Date.now()}${getVoiceExtension(contentType)}`,
-        { type: contentType }
-      );
+      const voiceFile = new File([blob], `nota-de-voz-${Date.now()}${getVoiceExtension(contentType)}`, {
+        type: contentType
+      });
 
       uploadAttachment(voiceFile)
         .then(sendUploadedAttachment)
@@ -1036,6 +1684,8 @@ export function AppPage() {
 
     recorder.start(250);
     mediaRecorderRef.current = recorder;
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setIsRecordingVoice(true);
     setStatusText("Grabando nota de voz...");
   };
@@ -1083,6 +1733,8 @@ export function AppPage() {
     await loadGroups();
     setSelectedGroupId(response.data.id as string);
     setPanel("groups");
+    setInboxFilter("groups");
+    setShowGroupCreator(false);
     setStatusText("Grupo creado.");
   };
 
@@ -1118,7 +1770,11 @@ export function AppPage() {
     if (message.type === "image" && attachmentUrl) {
       return (
         <a className="block" href={attachmentUrl} rel="noreferrer" target="_blank">
-          <img alt={message.attachmentName || "Imagen"} className="h-auto max-h-72 w-auto max-w-[min(100%,22rem)] rounded-2xl object-cover" src={attachmentUrl} />
+          <img
+            alt={message.attachmentName || "Imagen"}
+            className="h-auto max-h-72 w-auto max-w-[min(100%,22rem)] rounded-2xl object-cover"
+            src={attachmentUrl}
+          />
         </a>
       );
     }
@@ -1139,7 +1795,9 @@ export function AppPage() {
         <div className="min-w-[220px] max-w-[min(100%,24rem)] space-y-2">
           <p className="text-xs font-medium">{message.attachmentName || "Nota de voz"}</p>
           <audio className="w-full" controls preload="metadata" src={attachmentUrl} />
-          {message.attachmentSizeBytes ? <p className="text-[11px] opacity-80">{formatBytes(message.attachmentSizeBytes)}</p> : null}
+          {message.attachmentSizeBytes ? (
+            <p className="text-[11px] opacity-80">{formatBytes(message.attachmentSizeBytes)}</p>
+          ) : null}
         </div>
       );
     }
@@ -1153,16 +1811,58 @@ export function AppPage() {
           target="_blank"
         >
           <p className="text-xs uppercase tracking-wide opacity-70">Archivo</p>
-          <p className="mt-1 break-words font-medium [overflow-wrap:anywhere]">{message.attachmentName || "Descargar archivo"}</p>
+          <p className="mt-1 break-words font-medium [overflow-wrap:anywhere]">
+            {message.attachmentName || "Descargar archivo"}
+          </p>
           <p className="mt-1 text-[11px] opacity-80">
-            {[message.attachmentContentType, formatBytes(message.attachmentSizeBytes)].filter(Boolean).join(" | ")}
+            {[message.attachmentContentType, formatBytes(message.attachmentSizeBytes)]
+              .filter(Boolean)
+              .join(" | ")}
           </p>
         </a>
       );
     }
 
-    return <p className="max-w-[60ch] whitespace-pre-wrap break-words leading-7 [overflow-wrap:anywhere]">{message.text ?? ""}</p>;
+    return (
+      <p className="max-w-[60ch] whitespace-pre-wrap break-words leading-7 [overflow-wrap:anywhere]">
+        {message.text ?? ""}
+      </p>
+    );
   };
+
+  const handleMessagesScroll = (): void => {
+    const nearBottom = isNearBottom();
+    stickToBottomRef.current = nearBottom;
+
+    if (nearBottom) {
+      setShowScrollToBottom(false);
+      setPendingNewMessageCount(0);
+    }
+  };
+
+  const renderOwnMessageMeta = (message: MessageDto) => (
+    <>
+      <span>{formatMessageTime(message.createdAt)}</span>
+      <StatusChecks
+        className={clsx(
+          "h-3.5 w-3.5",
+          message.status === "Seen" ? "text-sky-300" : "text-[var(--bubble-own-muted)]"
+        )}
+        status={message.status}
+      />
+    </>
+  );
+
+  const mobileSidebarToggle = (
+    <button
+      aria-label="Abrir conversaciones"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] text-[var(--app-text)] shadow-sm transition hover:border-brand-300 lg:hidden"
+      onClick={() => setSidebarOpen(true)}
+      type="button"
+    >
+      <MenuIcon className="h-5 w-5" />
+    </button>
+  );
 
   const renderChatMain = () => {
     if (!currentConversation) {
@@ -1183,42 +1883,86 @@ export function AppPage() {
     return (
       <>
         <ChatHeader
-          aside={typingByConversation[currentConversation.id] ? (
-            <div className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800">
-              {typingByConversation[currentConversation.id]} esta escribiendo...
-            </div>
-          ) : undefined}
-          avatar={<Avatar name={contactName} online={online} size="lg" src={currentConversation.contact.profileImageUrl} />}
-          eyebrow="Chat privado"
-          statusRow={(
+          aside={
             <>
-              <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", online ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+              {typingByConversation[currentConversation.id] ? (
+                <div className="rounded-full bg-[#103529] px-3 py-1 text-[11px] font-semibold text-[#7df2b0]">
+                  {typingByConversation[currentConversation.id]} esta escribiendo...
+                </div>
+              ) : null}
+              <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar en chat" />
+              <HeaderActionButton icon={<InfoIcon className="h-5 w-5" />} label="Informacion del chat" />
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas acciones" />
+            </>
+          }
+          avatar={
+            <Avatar
+              name={contactName}
+              online={online}
+              size="lg"
+              src={currentConversation.contact.profileImageUrl}
+            />
+          }
+          eyebrow="Chat privado"
+          leadingAction={mobileSidebarToggle}
+          statusRow={
+            <>
+              <span
+                className={clsx(
+                  "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                  online
+                    ? "bg-[#103529] text-[#7df2b0]"
+                    : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)]"
+                )}
+              >
                 {online ? "En linea" : "Desconectado"}
               </span>
-              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+              <span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">
                 SignalR: {HubConnectionState[connectionState]}
               </span>
             </>
-          )}
-          subtitle={<p className="truncate">Codigo: {currentConversation.contact.publicCode}</p>}
+          }
+          subtitle={
+            <p className="truncate">
+              {online ? "en linea" : "ultima actividad no disponible"} |{" "}
+              {currentConversation.contact.publicCode}
+            </p>
+          }
           title={contactName}
         />
 
         <MessageViewport
-          emptyState={(
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
+          emptyState={
             <EmptyMessagingState
               description="Todavia no hay mensajes en esta conversacion."
               eyebrow="Mensajes"
               title="Empieza el chat"
             />
-          )}
-          viewportRef={messageViewportRef}
+          }
+          onScroll={handleMessagesScroll}
+          scrollAction={
+            showScrollToBottom ? (
+              <ScrollToBottomButton
+                count={pendingNewMessageCount}
+                onClick={() => scrollToBottom("smooth")}
+              />
+            ) : null
+          }
+          viewportRef={messagesContainerRef}
         >
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
               message={message}
-              meta={`${formatMessageTime(message.createdAt)}${message.senderId === user?.id ? ` · ${message.status}` : ""}`}
+              meta={
+                message.senderId === user?.id ? (
+                  renderOwnMessageMeta(message)
+                ) : (
+                  <span>{formatMessageTime(message.createdAt)}</span>
+                )
+              }
               own={message.senderId === user?.id}
               renderContent={renderMessageContent}
             />
@@ -1244,33 +1988,58 @@ export function AppPage() {
     return (
       <>
         <ChatHeader
-          aside={groupMembers.slice(0, 4).map((member) => (
-            <span className="rounded-full border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] px-3 py-1 text-xs font-semibold text-[var(--app-subtle-text)]" key={member.id}>
-              {member.publicAlias}
-            </span>
-          ))}
+          aside={
+            <>
+              {groupMembers.slice(0, 3).map((member) => (
+                <span
+                  className="rounded-full border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] px-3 py-1 text-xs font-semibold text-[var(--app-subtle-text)]"
+                  key={member.id}
+                >
+                  {member.publicAlias}
+                </span>
+              ))}
+              <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar en grupo" />
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas acciones" />
+            </>
+          }
           avatar={<Avatar name={currentGroup.name} size="lg" />}
           eyebrow="Grupo activo"
-          statusRow={<span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">{groupMembers.length} miembros</span>}
+          leadingAction={mobileSidebarToggle}
+          statusRow={
+            <span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">
+              {groupMembers.length} miembros
+            </span>
+          }
           subtitle={<p className="truncate">Conversacion grupal compartida</p>}
           title={currentGroup.name}
         />
 
         <MessageViewport
-          emptyState={(
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
+          emptyState={
             <EmptyMessagingState
               description="Aun no hay mensajes en este grupo."
               eyebrow="Mensajes"
               title="Todo listo para empezar"
             />
-          )}
-          viewportRef={messageViewportRef}
+          }
+          onScroll={handleMessagesScroll}
+          scrollAction={
+            showScrollToBottom ? (
+              <ScrollToBottomButton
+                count={pendingNewMessageCount}
+                onClick={() => scrollToBottom("smooth")}
+              />
+            ) : null
+          }
+          viewportRef={messagesContainerRef}
         >
           {groupMessages.map((message) => (
             <MessageBubble
               key={message.id}
               message={message}
-              meta={formatMessageTime(message.createdAt)}
+              meta={<span>{formatMessageTime(message.createdAt)}</span>}
               own={message.senderId === user?.id}
               renderContent={renderMessageContent}
               senderLabel={message.senderId === user?.id ? undefined : message.senderAlias}
@@ -1282,186 +2051,201 @@ export function AppPage() {
   };
 
   const renderSidebarContent = () => {
-    if (panel === "chats") {
-      return (
-        <div className="space-y-3">
-          <div className="rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
-            <p className="eyebrow-label">Resumen</p>
-            <div className="mt-4 grid grid-cols-2 gap-3">
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Privados</p>
-                <p className="mt-1 text-2xl font-bold text-[var(--app-text)]">{conversations.length}</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">En linea</p>
-                <p className="mt-1 text-2xl font-bold text-emerald-600">{onlineContacts}</p>
-              </div>
-            </div>
-          </div>
-
-          {conversations.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
-              No tienes conversaciones privadas todavia.
-            </div>
-          ) : null}
-
-          {conversations.map((conversation) => {
-            const selected = selectedConversationId === conversation.id;
-            const contactName = conversation.contact.alias || conversation.contact.publicAlias;
-            const previewDate = conversation.lastMessageAt ?? conversation.createdAt;
-
-            return (
-              <button
-                className={clsx(
-                  "w-full rounded-[26px] border p-3 text-left transition",
-                  selected
-                    ? "border-transparent bg-[linear-gradient(135deg,#4f6573,#27343d)] text-white shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
-                    : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
-                )}
-                key={conversation.id}
-                onClick={() => setSelectedConversationId(conversation.id)}
-                type="button"
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar
-                    name={contactName}
-                    online={presenceByUser[conversation.contact.id]}
-                    src={conversation.contact.profileImageUrl}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={clsx("truncate text-sm font-semibold", selected ? "text-white" : "text-[var(--app-text)]")}>{contactName}</p>
-                      <span className={clsx("shrink-0 text-[11px]", selected ? "text-white/72" : "text-[var(--app-subtle-text)]")}>
-                        {formatSidebarTime(previewDate)}
-                      </span>
-                    </div>
-                    <p className={clsx("mt-1 truncate text-xs", selected ? "text-white/72" : "text-[var(--app-subtle-text)]")}>
-                      {getMessagePreview(conversation.lastMessage)}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      );
-    }
-
-    if (panel === "groups") {
-      return (
-        <div className="space-y-4">
-          <form className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
-            createGroup(event).catch(() => {
-              setStatusText("No fue posible crear el grupo.");
-            });
-          }}>
-            <p className="eyebrow-label">Nuevo grupo</p>
-            <input
-              className="field-input mt-3"
-              onChange={(event) => setNewGroupName(event.target.value)}
-              placeholder="Nombre del grupo"
-              value={newGroupName}
-            />
-            <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-              {contacts.length === 0 ? <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p> : null}
-              {contacts.map((contact) => (
-                <label className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5" key={contact.id}>
-                  <input
-                    checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
-                    onChange={() => toggleGroupMember(contact.contactUser.id)}
-                    type="checkbox"
-                  />
-                  <span>{contact.alias || contact.contactUser.publicAlias}</span>
-                </label>
-              ))}
-            </div>
-            <button className="primary-button mt-3 w-full" type="submit">
-              Crear grupo
-            </button>
-          </form>
-
-          {groupChats.length === 0 ? (
-            <div className="rounded-[28px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
-              No hay grupos todavia. Crea el primero desde este panel.
-            </div>
-          ) : null}
-
-          {groupChats.map((group) => {
-            const selected = selectedGroupId === group.id;
-
-            return (
-              <button
-                className={clsx(
-                  "w-full rounded-[26px] border p-3 text-left transition",
-                  selected
-                    ? "border-transparent bg-[linear-gradient(135deg,#4f6573,#27343d)] text-white shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
-                    : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
-                )}
-                key={group.id}
-                onClick={() => setSelectedGroupId(group.id)}
-                type="button"
-              >
-                <div className="flex items-start gap-3">
-                  <Avatar name={group.name} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2">
-                      <p className={clsx("truncate text-sm font-semibold", selected ? "text-white" : "text-[var(--app-text)]")}>{group.name}</p>
-                      <span className={clsx("rounded-full px-2 py-0.5 text-[10px] font-semibold", selected ? "bg-white/15 text-white" : "bg-brand-50 text-brand-700")}>
-                        {group.memberCount}
-                      </span>
-                    </div>
-                    <p className={clsx("mt-1 truncate text-xs", selected ? "text-white/72" : "text-[var(--app-subtle-text)]")}>
-                      {getMessagePreview(group.lastMessage)}
-                    </p>
-                  </div>
-                </div>
-              </button>
-            );
-          })}
-        </div>
-      );
-    }
-
-    if (panel === "contacts") {
-      return (
-        <div className="space-y-4">
-          <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-4">
-            <p className="eyebrow-label">Resumen</p>
-            <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">Tus contactos</h3>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Total</p>
-                <p className="mt-1 text-xl font-bold text-[var(--app-text)]">{contacts.length}</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">En linea</p>
-                <p className="mt-1 text-xl font-bold text-emerald-600">{onlineContacts}</p>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,rgba(95,120,136,0.12),rgba(79,101,115,0.06))] p-4 text-sm leading-6 text-[var(--app-subtle-text)]">
-            Usa alias locales para encontrar conversaciones mas rapido y mantener tu agenda organizada.
-          </article>
-        </div>
-      );
-    }
-
     return (
-      <div className="space-y-4">
-        <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-4">
-          <p className="eyebrow-label">Vista rapida</p>
-          <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">{profile.publicAlias || user?.publicAlias}</h3>
-          <p className="mt-2 text-sm leading-6 text-[var(--app-subtle-text)]">{profile.bio || "Completa tu bio para dar contexto a otras personas."}</p>
-        </article>
-
-        <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] p-4 text-sm">
-          <p className="text-xs uppercase text-[var(--app-subtle-text)]">Color de acento</p>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="h-5 w-5 rounded-full border border-[var(--muted-card-border)]" style={{ backgroundColor: profile.accentColor }} />
-            <span className="font-medium text-[var(--app-text)]">{profile.accentColor}</span>
+      <div className="flex min-h-0 flex-1 flex-col bg-[var(--sidebar-bg)]">
+        <div className="border-b border-[var(--surface-border)] px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[28px] font-semibold tracking-[-0.03em] text-[var(--app-text)]">
+                Chats
+              </h2>
+            </div>
+            <div className="flex items-center gap-1">
+              {inboxFilter !== "chats" ? (
+                <HeaderActionButton
+                  icon={<PlusIcon className="h-5 w-5" />}
+                  label="Nuevo grupo"
+                  onClick={() => setShowGroupCreator((prev) => !prev)}
+                />
+              ) : null}
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
+            </div>
           </div>
-        </article>
+
+          <div className="mt-4 flex items-center gap-3 rounded-full bg-[var(--search-bg)] px-4 py-3">
+            <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
+            <input
+              className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
+              onChange={(event) => setChatSearchQuery(event.target.value)}
+              placeholder="Buscar un chat o iniciar uno nuevo"
+              value={chatSearchQuery}
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <ChatFilterChip
+              active={inboxFilter === "all"}
+              label="Todos"
+              onClick={() => {
+                setInboxFilter("all");
+                setShowGroupCreator(false);
+              }}
+            />
+            <ChatFilterChip
+              active={inboxFilter === "chats"}
+              label="Privados"
+              onClick={() => {
+                setInboxFilter("chats");
+                setShowGroupCreator(false);
+              }}
+            />
+            <ChatFilterChip
+              active={inboxFilter === "groups"}
+              label="Grupos"
+              onClick={() => setInboxFilter("groups")}
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          {showGroupCreator && inboxFilter !== "chats" ? (
+            <form
+              className="mx-2 mb-3 rounded-[18px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4"
+              onSubmit={(event) => {
+                createGroup(event).catch(() => {
+                  setStatusText("No fue posible crear el grupo.");
+                });
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
+                <button
+                  className="text-xs font-medium text-[var(--app-subtle-text)] transition hover:text-[var(--app-text)]"
+                  onClick={() => setShowGroupCreator(false)}
+                  type="button"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <input
+                className="field-input mt-3"
+                onChange={(event) => setNewGroupName(event.target.value)}
+                placeholder="Nombre del grupo"
+                value={newGroupName}
+              />
+
+              <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
+                {contacts.length === 0 ? (
+                  <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p>
+                ) : null}
+                {contacts.map((contact) => (
+                  <label
+                    className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5"
+                    key={contact.id}
+                  >
+                    <input
+                      checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
+                      onChange={() => toggleGroupMember(contact.contactUser.id)}
+                      type="checkbox"
+                    />
+                    <span>{contact.alias || contact.contactUser.publicAlias}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button className="primary-button mt-3 w-full" type="submit">
+                Crear grupo
+              </button>
+            </form>
+          ) : null}
+
+          {inboxThreads.length === 0 ? (
+            <div className="mx-2 mt-2 rounded-[18px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
+              {inboxFilter === "groups"
+                ? "No hay grupos creados todavia."
+                : inboxFilter === "chats"
+                  ? "No hay chats que coincidan con la busqueda."
+                  : "No hay conversaciones ni grupos que coincidan con la busqueda."}
+            </div>
+          ) : null}
+
+          {inboxThreads.map((item) => {
+            const selected =
+              item.kind === "chat"
+                ? panel === "chats" && selectedConversationId === item.id
+                : panel === "groups" && selectedGroupId === item.id;
+
+            const unreadCount = item.kind === "chat" ? item.unreadCount : 0;
+
+            return (
+              <button
+                className={clsx(
+                  "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition",
+                  selected ? "bg-[var(--chat-item-active)]" : "hover:bg-[var(--chat-item-hover)]"
+                )}
+                key={`${item.kind}:${item.id}`}
+                onClick={() => {
+                  if (item.kind === "chat") {
+                    setPanel("chats");
+                    setSelectedConversationId(item.id);
+                  } else {
+                    setPanel("groups");
+                    setSelectedGroupId(item.id);
+                  }
+
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
+                type="button"
+              >
+                <Avatar
+                  name={item.name}
+                  online={item.kind === "chat" ? item.online : undefined}
+                  src={item.kind === "chat" ? item.profileImageUrl : undefined}
+                />
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="truncate text-[15px] font-medium text-[var(--app-text)]">
+                      {item.name}
+                    </p>
+                    <span
+                      className={clsx(
+                        "shrink-0 text-[11px]",
+                        unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]"
+                      )}
+                    >
+                      {formatSidebarTime(item.previewDate)}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p
+                      className={clsx(
+                        "min-w-0 flex-1 truncate text-[13px]",
+                        unreadCount > 0 ? "text-[var(--app-text)]" : "text-[var(--app-subtle-text)]"
+                      )}
+                    >
+                      {item.preview}
+                    </p>
+
+                    {unreadCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 py-0.5 text-[10px] font-bold text-[#041b10]">
+                        {unreadCount}
+                      </span>
+                    ) : item.kind === "group" ? (
+                      <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
+                        {item.memberCount}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   };
@@ -1471,22 +2255,38 @@ export function AppPage() {
       <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
         <p className="eyebrow-label">Agenda</p>
         <h2 className="mt-2 text-xl font-bold text-[var(--app-text)]">Tus contactos</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">Agrega personas por codigo y define alias locales para encontrarlas mas rapido.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">
+          Agrega personas por codigo y define alias locales para encontrarlas mas rapido.
+        </p>
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
-            addContactByCode(event).catch(() => {
-              setStatusText("No fue posible agregar el contacto.");
-            });
-          }}>
+          <form
+            className="surface-panel p-4 sm:p-5"
+            onSubmit={(event) => {
+              addContactByCode(event).catch(() => {
+                setStatusText("No fue posible agregar el contacto.");
+              });
+            }}
+          >
             <p className="eyebrow-label">Agregar contacto</p>
-            <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">Invita por codigo publico</h3>
-            <p className="mt-2 text-sm text-[var(--app-subtle-text)]">Comparte el codigo de la otra persona o pega uno aqui para agregarla a tu red.</p>
+            <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">
+              Invita por codigo publico
+            </h3>
+            <p className="mt-2 text-sm text-[var(--app-subtle-text)]">
+              Comparte el codigo de la otra persona o pega uno aqui para agregarla a tu red.
+            </p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <input className="field-input" onChange={(event) => setAddingCode(event.target.value.toUpperCase())} placeholder="Codigo publico" value={addingCode} />
-              <button className="primary-button sm:min-w-36" type="submit">Agregar</button>
+              <input
+                className="field-input"
+                onChange={(event) => setAddingCode(event.target.value.toUpperCase())}
+                placeholder="Codigo publico"
+                value={addingCode}
+              />
+              <button className="primary-button sm:min-w-36" type="submit">
+                Agregar
+              </button>
             </div>
           </form>
 
@@ -1514,15 +2314,28 @@ export function AppPage() {
             <article className="surface-panel p-4 sm:p-5" key={contact.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-[var(--app-text)]">{contact.alias || contact.contactUser.publicAlias}</h3>
-                  <p className="mt-1 text-xs text-[var(--app-subtle-text)]">Codigo: {contact.contactUser.publicCode}</p>
+                  <h3 className="text-lg font-bold text-[var(--app-text)]">
+                    {contact.alias || contact.contactUser.publicAlias}
+                  </h3>
+                  <p className="mt-1 text-xs text-[var(--app-subtle-text)]">
+                    Codigo: {contact.contactUser.publicCode}
+                  </p>
                 </div>
-                <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", presenceByUser[contact.contactUser.id] ? "bg-emerald-100 text-emerald-700" : "bg-[var(--muted-card-bg)] text-[var(--app-subtle-text)]")}>
+                <span
+                  className={clsx(
+                    "rounded-full px-2.5 py-1 text-xs font-semibold",
+                    presenceByUser[contact.contactUser.id]
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-[var(--muted-card-bg)] text-[var(--app-subtle-text)]"
+                  )}
+                >
                   {presenceByUser[contact.contactUser.id] ? "En linea" : "Sin conexion"}
                 </span>
               </div>
 
-              <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-subtle-text)]">Alias local</label>
+              <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-subtle-text)]">
+                Alias local
+              </label>
               <input
                 className="field-input mt-2"
                 defaultValue={contact.alias ?? ""}
@@ -1539,7 +2352,9 @@ export function AppPage() {
           {contacts.length === 0 ? (
             <div className="surface-panel p-6 text-center text-[var(--app-subtle-text)] md:col-span-2 2xl:col-span-3">
               <p className="text-lg font-semibold text-[var(--app-text)]">Aun no tienes contactos</p>
-              <p className="mt-2 text-sm">Agrega tu primer contacto con su codigo publico para empezar a chatear.</p>
+              <p className="mt-2 text-sm">
+                Agrega tu primer contacto con su codigo publico para empezar a chatear.
+              </p>
             </div>
           ) : null}
         </div>
@@ -1552,27 +2367,36 @@ export function AppPage() {
       <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
         <p className="eyebrow-label">Configuracion personal</p>
         <h2 className="mt-2 text-xl font-bold text-[var(--app-text)]">Tu perfil</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">Actualiza la informacion visible para ti y para las personas que conversan contigo.</p>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">
+          Actualiza la informacion visible para ti y para las personas que conversan contigo.
+        </p>
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
-            saveProfile(event).catch(() => {
-              setStatusText("No fue posible actualizar el perfil.");
-            });
-          }}>
+          <form
+            className="surface-panel p-4 sm:p-5"
+            onSubmit={(event) => {
+              saveProfile(event).catch(() => {
+                setStatusText("No fue posible actualizar el perfil.");
+              });
+            }}
+          >
             <p className="eyebrow-label">Datos visibles</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
               <input
                 className="field-input"
-                onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))}
+                onChange={(event) =>
+                  setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))
+                }
                 placeholder="Apodo publico"
                 value={profile.publicAlias}
               />
               <select
                 className="field-input"
-                onChange={(event) => applyThemeMode(Number(event.target.value) === 2 ? "dark" : "light")}
+                onChange={(event) =>
+                  applyThemeMode(Number(event.target.value) === 2 ? "dark" : "light")
+                }
                 value={profile.theme}
               >
                 <option value={1}>Tema claro</option>
@@ -1581,15 +2405,23 @@ export function AppPage() {
             </div>
             <textarea
               className="field-textarea mt-4 min-h-36"
-              onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))}
+              onChange={(event) =>
+                setProfile((prev) => ({ ...prev, bio: event.target.value }))
+              }
               placeholder="Bio"
               value={profile.bio}
             />
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
-              <label className="rounded-[28px] border border-dashed border-brand-300 bg-brand-50/60 p-4 text-sm text-[var(--app-subtle-text)]" htmlFor="profile-image">
+              <label
+                className="rounded-[28px] border border-dashed border-brand-300 bg-brand-50/60 p-4 text-sm text-[var(--app-subtle-text)]"
+                htmlFor="profile-image"
+              >
                 <span className="block font-semibold text-[var(--app-text)]">Foto de perfil</span>
-                <span className="mt-1 block text-xs">Selecciona jpg, png o webp para actualizar tu avatar.</span>
+                <span className="mt-1 block text-xs">
+                  Selecciona jpg, png o webp para actualizar tu avatar.
+                </span>
                 <input
+                  accept="image/png,image/jpeg,image/webp"
                   className="mt-3 block w-full text-xs"
                   id="profile-image"
                   onChange={(event) => {
@@ -1598,36 +2430,49 @@ export function AppPage() {
                     });
                   }}
                   type="file"
-                  accept="image/png,image/jpeg,image/webp"
                 />
               </label>
               <div className="justify-self-start rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
                 <p className="text-xs uppercase text-[var(--app-subtle-text)]">Color acento</p>
                 <input
                   className="mt-3 h-12 w-24 cursor-pointer rounded-xl border border-[var(--muted-card-border)] bg-transparent p-1"
-                  onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))}
+                  onChange={(event) =>
+                    setProfile((prev) => ({ ...prev, accentColor: event.target.value }))
+                  }
                   type="color"
                   value={profile.accentColor}
                 />
               </div>
             </div>
-            <button className="primary-button mt-4 w-full sm:w-auto" type="submit">Guardar perfil</button>
+            <button className="primary-button mt-4 w-full sm:w-auto" type="submit">
+              Guardar perfil
+            </button>
           </form>
 
           <aside className="surface-panel p-4 sm:p-5">
             <p className="eyebrow-label">Vista rapida</p>
             <div className="mt-4 rounded-[32px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-5 text-white">
               <p className="text-xs uppercase tracking-[0.2em] text-white/70">Perfil publico</p>
-              <h3 className="mt-3 text-2xl font-bold">{profile.publicAlias || user?.publicAlias || "Sin alias"}</h3>
-              <p className="mt-2 text-sm leading-6 text-white/80">{profile.bio || "Tu bio aparecera aqui cuando la completes."}</p>
+              <h3 className="mt-3 text-2xl font-bold">
+                {profile.publicAlias || user?.publicAlias || "Sin alias"}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-white/80">
+                {profile.bio || "Tu bio aparecera aqui cuando la completes."}
+              </p>
               <div className="mt-5 flex items-center gap-3">
-                <span className="h-4 w-4 rounded-full border border-white/60" style={{ backgroundColor: profile.accentColor }} />
+                <span
+                  className="h-4 w-4 rounded-full border border-white/60"
+                  style={{ backgroundColor: profile.accentColor }}
+                />
                 <span className="text-sm text-white/80">{profile.accentColor}</span>
               </div>
             </div>
             <div className="mt-4 rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4 text-sm text-[var(--app-subtle-text)]">
               <p className="font-semibold text-[var(--app-text)]">Consejo</p>
-              <p className="mt-2 leading-6">Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y grupales.</p>
+              <p className="mt-2 leading-6">
+                Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y
+                grupales.
+              </p>
             </div>
           </aside>
         </div>
@@ -1636,99 +2481,198 @@ export function AppPage() {
   );
 
   return (
-    <div className="relative h-screen overflow-hidden px-3 py-3 text-[var(--app-text)] sm:px-4 sm:py-4">
-      <div className="grid h-full min-h-0 gap-3 grid-rows-[minmax(18rem,42vh)_minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] lg:grid-rows-1">
-        <aside className="surface-panel flex min-h-0 flex-col overflow-hidden">
-          <div className="shrink-0 border-b border-[var(--surface-border)] p-4 sm:p-5">
-            <div className="rounded-[32px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-4 text-white shadow-[0_22px_60px_-32px_rgba(15,23,42,0.8)]">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar name={user?.publicAlias || "Usuario"} size="lg" src={user?.profileImageUrl} />
-                  <div className="min-w-0">
-                    <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-white/70">Habla Mas</p>
-                    <h1 className="mt-1 truncate text-lg font-bold">{user?.publicAlias}</h1>
-                    <p className="truncate text-xs text-white/70">{user?.publicCode}</p>
-                  </div>
-                </div>
-                <ThemeToggle mode={themeMode} onToggle={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")} />
-              </div>
+    <div className="relative h-screen overflow-hidden bg-[var(--app-background)] text-[var(--app-text)]">
+      {sidebarOpen ? (
+        <button
+          aria-label="Cerrar menu"
+          className="absolute inset-0 z-20 bg-slate-950/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          type="button"
+        />
+      ) : null}
 
-              <div className="mt-4 grid grid-cols-3 gap-2">
-                <div className="rounded-2xl bg-white/10 px-3 py-2">
-                  <p className="text-[10px] uppercase text-white/60">Chats</p>
-                  <p className="mt-1 text-lg font-semibold">{conversations.length}</p>
-                </div>
-                <div className="rounded-2xl bg-white/10 px-3 py-2">
-                  <p className="text-[10px] uppercase text-white/60">Grupos</p>
-                  <p className="mt-1 text-lg font-semibold">{groupChats.length}</p>
-                </div>
-                <div className="rounded-2xl bg-white/10 px-3 py-2">
-                  <p className="text-[10px] uppercase text-white/60">Online</p>
-                  <p className="mt-1 text-lg font-semibold">{onlineContacts}</p>
-                </div>
-              </div>
-            </div>
-
-            <nav className="mt-4 space-y-2">
-              <SidebarNavButton
-                active={panel === "chats"}
-                badge={conversations.length}
-                description={panelDescriptions.chats}
-                icon={<ChatIcon className="h-5 w-5" />}
-                label={panelLabels.chats}
-                onClick={() => setPanel("chats")}
-              />
-              <SidebarNavButton
-                active={panel === "groups"}
-                badge={groupChats.length}
-                description={panelDescriptions.groups}
-                icon={<GroupIcon className="h-5 w-5" />}
-                label={panelLabels.groups}
-                onClick={() => setPanel("groups")}
-              />
-              <SidebarNavButton
-                active={panel === "contacts"}
-                badge={contacts.length}
-                description={panelDescriptions.contacts}
-                icon={<ContactIcon className="h-5 w-5" />}
-                label={panelLabels.contacts}
-                onClick={() => setPanel("contacts")}
-              />
-              <SidebarNavButton
-                active={panel === "profile"}
-                description={panelDescriptions.profile}
-                icon={<ProfileIcon className="h-5 w-5" />}
-                label={panelLabels.profile}
+      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[430px_minmax(0,1fr)]">
+        <aside
+          className={clsx(
+            "absolute inset-y-0 left-0 z-30 flex min-h-0 w-[min(96vw,430px)] overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
+            sidebarOpen ? "translate-x-0" : "-translate-x-[105%] lg:translate-x-0"
+          )}
+        >
+          <div className="hidden w-[72px] shrink-0 border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] lg:flex lg:flex-col lg:items-center lg:justify-between lg:px-3 lg:py-4">
+            <div className="flex flex-col items-center gap-3">
+              <button
+                className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[var(--chip-bg)] transition hover:bg-[var(--chip-hover)]"
                 onClick={() => setPanel("profile")}
+                type="button"
+              >
+                {user?.profileImageUrl ? (
+                  <img
+                    alt={user.publicAlias}
+                    className="h-full w-full object-cover"
+                    src={user.profileImageUrl}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-sm font-bold text-[var(--app-text)]">
+                    {getInitials(user?.publicAlias || "HM")}
+                  </span>
+                )}
+              </button>
+
+              <RailButton
+                active={panel === "chats"}
+                badge={
+                  Object.values(unreadByConversation).reduce((sum, value) => sum + value, 0) ||
+                  undefined
+                }
+                icon={<ChatIcon className="h-5 w-5" />}
+                label="Chats"
+                onClick={() => {
+                  setPanel("chats");
+                  setInboxFilter("chats");
+                  setShowGroupCreator(false);
+                }}
+              />
+
+              <RailButton
+                active={panel === "groups"}
+                badge={groupChats.length || undefined}
+                icon={<GroupIcon className="h-5 w-5" />}
+                label="Grupos"
+                onClick={() => {
+                  setPanel("groups");
+                  setInboxFilter("groups");
+                }}
+              />
+
+              <RailButton
+                active={panel === "contacts"}
+                badge={contacts.length || undefined}
+                icon={<ContactIcon className="h-5 w-5" />}
+                label="Contactos"
+                onClick={() => {
+                  setPanel("contacts");
+                  setShowGroupCreator(false);
+                }}
               />
 
               <Link
-                className="group flex w-full items-center gap-3 rounded-[24px] border border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] px-4 py-3 transition hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
+                aria-label="Chatbot IA"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                title="Chatbot IA"
                 to="/chatbot"
               >
-                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-brand-50 text-brand-700 transition group-hover:bg-brand-100">
-                  <BotIcon className="h-5 w-5" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-sm font-semibold text-[var(--app-text)]">Chatbot IA</span>
-                  <span className="mt-0.5 block truncate text-xs text-[var(--app-subtle-text)]">Asistente separado para consultas y soporte.</span>
-                </span>
+                <BotIcon className="h-5 w-5" />
               </Link>
-            </nav>
+            </div>
+
+            <div className="flex flex-col items-center gap-3">
+              <button
+                aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
+                type="button"
+              >
+                {themeMode === "dark" ? (
+                  <SunIcon className="h-5 w-5" />
+                ) : (
+                  <MoonIcon className="h-5 w-5" />
+                )}
+              </button>
+
+              <button
+                aria-label="Perfil"
+                className={clsx(
+                  "flex h-11 w-11 items-center justify-center rounded-2xl transition",
+                  panel === "profile"
+                    ? "bg-[var(--chat-item-active)] text-[#25d366]"
+                    : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                )}
+                onClick={() => setPanel("profile")}
+                type="button"
+              >
+                <SettingsIcon className="h-5 w-5" />
+              </button>
+
+              <button
+                aria-label="Salir"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => logout().catch(() => undefined)}
+                type="button"
+              >
+                <LogoutIcon className="h-5 w-5" />
+              </button>
+            </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-3 border-b border-[var(--surface-border)] px-4 py-3 lg:hidden">
+              <button
+                className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--chip-bg)] transition hover:bg-[var(--chip-hover)]"
+                onClick={() => {
+                  setPanel("profile");
+                  setSidebarOpen(true);
+                }}
+                type="button"
+              >
+                {user?.profileImageUrl ? (
+                  <img
+                    alt={user.publicAlias}
+                    className="h-full w-full rounded-full object-cover"
+                    src={user.profileImageUrl}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center rounded-full text-sm font-bold text-[var(--app-text)]">
+                    {getInitials(user?.publicAlias || "HM")}
+                  </span>
+                )}
+              </button>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[var(--app-text)]">
+                  {profile.publicAlias || user?.publicAlias || "Habla Mas"}
+                </p>
+                <p className="truncate text-[11px] text-[var(--app-subtle-text)]">Habla Mas</p>
+              </div>
+
+              <button
+                aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
+                type="button"
+              >
+                {themeMode === "dark" ? (
+                  <SunIcon className="h-5 w-5" />
+                ) : (
+                  <MoonIcon className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+
             {renderSidebarContent()}
-          </div>
 
-          <div className="shrink-0 border-t border-[var(--surface-border)] p-4 sm:p-5">
-            <button className="secondary-button w-full" onClick={() => logout().catch(() => undefined)} type="button">
-              Salir
-            </button>
+            <div className="flex items-center justify-between gap-2 border-t border-[var(--surface-border)] px-3 py-3 lg:hidden">
+              <SidebarFooterButton
+                icon={<SettingsIcon className="h-4 w-4" />}
+                label="Perfil"
+                onClick={() => {
+                  setPanel("profile");
+                  setSidebarOpen(true);
+                }}
+              />
+              <SidebarFooterButton
+                icon={<LogoutIcon className="h-4 w-4" />}
+                label="Salir"
+                onClick={() => logout().catch(() => undefined)}
+              />
+            </div>
           </div>
         </aside>
 
-        <main className="surface-panel flex min-h-0 flex-col overflow-hidden">
+        <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--conversation-shell)]">
+          {panel !== "chats" && panel !== "groups" ? (
+            <div className="absolute left-4 top-4 z-10 lg:hidden">{mobileSidebarToggle}</div>
+          ) : null}
+
           {panel === "groups"
             ? renderGroupMain()
             : panel === "chats"
