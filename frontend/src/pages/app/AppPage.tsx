@@ -35,7 +35,27 @@ interface UploadedAttachment {
 type ChatRenderableMessage = Pick<MessageDto, "id" | "type" | "text" | "imageUrl" | "attachmentUrl" | "attachmentName" | "attachmentContentType" | "attachmentSizeBytes" | "createdAt">;
 type Panel = "chats" | "groups" | "contacts" | "profile";
 type ThemeMode = "light" | "dark";
-type ChatFilter = "all" | "unread" | "online";
+type InboxFilter = "all" | "chats" | "groups";
+
+type SidebarThreadItem =
+  | {
+    kind: "chat";
+    id: string;
+    name: string;
+    preview: string;
+    previewDate: string;
+    profileImageUrl?: string;
+    online: boolean;
+    unreadCount: number;
+  }
+  | {
+    kind: "group";
+    id: string;
+    name: string;
+    preview: string;
+    previewDate: string;
+    memberCount: number;
+  };
 
 interface IconProps {
   className?: string;
@@ -158,6 +178,14 @@ function MenuIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
       <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M12 5v14M5 12h14" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -412,11 +440,12 @@ function ChatFilterChip({ active, label, onClick }: ChatFilterChipProps) {
   );
 }
 
-function HeaderActionButton({ icon, label }: { icon: ReactNode; label: string }) {
+function HeaderActionButton({ icon, label, onClick }: { icon: ReactNode; label: string; onClick?: () => void }) {
   return (
     <button
       aria-label={label}
       className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
       type="button"
     >
       {icon}
@@ -606,7 +635,7 @@ export function AppPage() {
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
   const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({});
   const [chatSearchQuery, setChatSearchQuery] = useState("");
-  const [chatFilter, setChatFilter] = useState<ChatFilter>("all");
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("chats");
   const [messageInput, setMessageInput] = useState("");
   const [connectionState, setConnectionState] = useState<HubConnectionState>(HubConnectionState.Disconnected);
   const [addingCode, setAddingCode] = useState("");
@@ -614,6 +643,7 @@ export function AppPage() {
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showGroupCreator, setShowGroupCreator] = useState(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
   const [pendingNewMessageCount, setPendingNewMessageCount] = useState(0);
   const [profile, setProfile] = useState<ProfileForm>({
@@ -659,30 +689,46 @@ export function AppPage() {
     () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
     [groupMessages, messages, panel]
   );
-  const filteredConversations = useMemo(() => {
+  const inboxThreads = useMemo<SidebarThreadItem[]>(() => {
     const query = chatSearchQuery.trim().toLowerCase();
+    const chatItems: SidebarThreadItem[] = conversations.map((conversation) => ({
+      id: conversation.id,
+      kind: "chat",
+      name: conversation.contact.alias || conversation.contact.publicAlias,
+      online: Boolean(presenceByUser[conversation.contact.id]),
+      preview: getMessagePreview(conversation.lastMessage),
+      previewDate: conversation.lastMessageAt ?? conversation.createdAt,
+      profileImageUrl: conversation.contact.profileImageUrl,
+      unreadCount: unreadByConversation[conversation.id] ?? 0
+    }));
 
-    return conversations.filter((conversation) => {
-      const name = (conversation.contact.alias || conversation.contact.publicAlias).toLowerCase();
-      const preview = getMessagePreview(conversation.lastMessage).toLowerCase();
-      const unreadCount = unreadByConversation[conversation.id] ?? 0;
-      const matchesQuery = query.length === 0 || name.includes(query) || preview.includes(query);
+    const groupItems: SidebarThreadItem[] = groupChats.map((group) => ({
+      id: group.id,
+      kind: "group",
+      name: group.name,
+      memberCount: group.memberCount,
+      preview: getMessagePreview(group.lastMessage),
+      previewDate: group.lastMessageAt ?? group.createdAt
+    }));
 
-      if (!matchesQuery) {
-        return false;
-      }
+    return [...chatItems, ...groupItems]
+      .filter((item) => {
+        if (inboxFilter === "chats" && item.kind !== "chat") {
+          return false;
+        }
 
-      if (chatFilter === "unread") {
-        return unreadCount > 0;
-      }
+        if (inboxFilter === "groups" && item.kind !== "group") {
+          return false;
+        }
 
-      if (chatFilter === "online") {
-        return Boolean(presenceByUser[conversation.contact.id]);
-      }
+        if (query.length === 0) {
+          return true;
+        }
 
-      return true;
-    });
-  }, [chatFilter, chatSearchQuery, conversations, presenceByUser, unreadByConversation]);
+        return item.name.toLowerCase().includes(query) || item.preview.toLowerCase().includes(query);
+      })
+      .sort((a, b) => new Date(b.previewDate).getTime() - new Date(a.previewDate).getTime());
+  }, [chatSearchQuery, conversations, groupChats, inboxFilter, presenceByUser, unreadByConversation]);
   const activeThreadKey = useMemo(
     () => (panel === "groups" ? `group:${selectedGroupId ?? "none"}` : panel === "chats" ? `chat:${selectedConversationId ?? "none"}` : panel),
     [panel, selectedConversationId, selectedGroupId]
@@ -1352,6 +1398,8 @@ export function AppPage() {
     await loadGroups();
     setSelectedGroupId(response.data.id as string);
     setPanel("groups");
+    setInboxFilter("groups");
+    setShowGroupCreator(false);
     setStatusText("Grupo creado.");
   };
 
@@ -1608,16 +1656,22 @@ export function AppPage() {
   };
 
   const renderSidebarContent = () => {
-    if (panel === "chats") {
+    if (panel === "chats" || panel === "groups") {
       return (
         <div className="flex min-h-0 flex-1 flex-col">
           <div className="border-b border-[var(--surface-border)] px-5 py-5">
             <div className="flex items-center justify-between gap-3">
               <div>
-                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Chats</h2>
+                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">{inboxFilter === "groups" ? "Grupos" : "Chats"}</h2>
               </div>
               <div className="flex items-center gap-1">
-                <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar chats" />
+                {inboxFilter !== "chats" ? (
+                  <HeaderActionButton
+                    icon={<PlusIcon className="h-5 w-5" />}
+                    label="Nuevo grupo"
+                    onClick={() => setShowGroupCreator((prev) => !prev)}
+                  />
+                ) : null}
                 <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
               </div>
             </div>
@@ -1633,24 +1687,79 @@ export function AppPage() {
             </div>
 
             <div className="mt-3 flex flex-wrap items-center gap-2">
-              <ChatFilterChip active={chatFilter === "all"} label="Todos" onClick={() => setChatFilter("all")} />
-              <ChatFilterChip active={chatFilter === "unread"} label="No leidos" onClick={() => setChatFilter("unread")} />
-              <ChatFilterChip active={chatFilter === "online"} label="En linea" onClick={() => setChatFilter("online")} />
+              <ChatFilterChip active={inboxFilter === "all"} label="Todos" onClick={() => {
+                setInboxFilter("all");
+                setShowGroupCreator(false);
+              }} />
+              <ChatFilterChip active={inboxFilter === "chats"} label="Chats" onClick={() => {
+                setInboxFilter("chats");
+                setPanel("chats");
+                setShowGroupCreator(false);
+              }} />
+              <ChatFilterChip active={inboxFilter === "groups"} label="Grupos" onClick={() => {
+                setInboxFilter("groups");
+                setPanel("groups");
+              }} />
             </div>
           </div>
 
           <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
-            {filteredConversations.length === 0 ? (
+            {showGroupCreator && inboxFilter !== "chats" ? (
+              <form className="mx-3 mb-3 rounded-[20px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
+                createGroup(event).catch(() => {
+                  setStatusText("No fue posible crear el grupo.");
+                });
+              }}>
+                <div className="flex items-center justify-between gap-3">
+                  <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
+                  <button
+                    className="text-xs font-medium text-[var(--app-subtle-text)] transition hover:text-[var(--app-text)]"
+                    onClick={() => setShowGroupCreator(false)}
+                    type="button"
+                  >
+                    Cerrar
+                  </button>
+                </div>
+                <input
+                  className="field-input mt-3"
+                  onChange={(event) => setNewGroupName(event.target.value)}
+                  placeholder="Nombre del grupo"
+                  value={newGroupName}
+                />
+                <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
+                  {contacts.length === 0 ? <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p> : null}
+                  {contacts.map((contact) => (
+                    <label className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5" key={contact.id}>
+                      <input
+                        checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
+                        onChange={() => toggleGroupMember(contact.contactUser.id)}
+                        type="checkbox"
+                      />
+                      <span>{contact.alias || contact.contactUser.publicAlias}</span>
+                    </label>
+                  ))}
+                </div>
+                <button className="primary-button mt-3 w-full" type="submit">
+                  Crear grupo
+                </button>
+              </form>
+            ) : null}
+
+            {inboxThreads.length === 0 ? (
               <div className="mx-3 mt-3 rounded-[22px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
-                No hay chats que coincidan con el filtro actual.
+                {inboxFilter === "groups"
+                  ? "No hay grupos creados todavia."
+                  : inboxFilter === "chats"
+                    ? "No hay chats que coincidan con la busqueda."
+                    : "No hay conversaciones ni grupos que coincidan con la busqueda."}
               </div>
             ) : null}
 
-            {filteredConversations.map((conversation) => {
-              const selected = selectedConversationId === conversation.id;
-              const contactName = conversation.contact.alias || conversation.contact.publicAlias;
-              const previewDate = conversation.lastMessageAt ?? conversation.createdAt;
-              const unreadCount = unreadByConversation[conversation.id] ?? 0;
+            {inboxThreads.map((item) => {
+              const selected = item.kind === "chat"
+                ? panel === "chats" && selectedConversationId === item.id
+                : panel === "groups" && selectedGroupId === item.id;
+              const unreadCount = item.kind === "chat" ? item.unreadCount : 0;
 
               return (
                 <button
@@ -1660,9 +1769,16 @@ export function AppPage() {
                       ? "bg-[var(--chat-item-active)]"
                       : "hover:bg-[var(--chat-item-hover)]"
                   )}
-                  key={conversation.id}
+                  key={`${item.kind}:${item.id}`}
                   onClick={() => {
-                    setSelectedConversationId(conversation.id);
+                    if (item.kind === "chat") {
+                      setPanel("chats");
+                      setSelectedConversationId(item.id);
+                    } else {
+                      setPanel("groups");
+                      setSelectedGroupId(item.id);
+                    }
+
                     if (typeof window !== "undefined" && window.innerWidth < 1024) {
                       setSidebarOpen(false);
                     }
@@ -1670,24 +1786,35 @@ export function AppPage() {
                   type="button"
                 >
                   <Avatar
-                    name={contactName}
-                    online={presenceByUser[conversation.contact.id]}
-                    src={conversation.contact.profileImageUrl}
+                    name={item.name}
+                    online={item.kind === "chat" ? item.online : undefined}
+                    src={item.kind === "chat" ? item.profileImageUrl : undefined}
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
-                      <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{contactName}</p>
+                      <div className="flex min-w-0 items-center gap-2">
+                        <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{item.name}</p>
+                        {item.kind === "group" ? (
+                          <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
+                            Grupo
+                          </span>
+                        ) : null}
+                      </div>
                       <span className={clsx("shrink-0 text-[11px]", unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]")}>
-                        {formatSidebarTime(previewDate)}
+                        {formatSidebarTime(item.previewDate)}
                       </span>
                     </div>
                     <div className="mt-1 flex items-center justify-between gap-2">
                       <p className={clsx("min-w-0 flex-1 truncate text-[13px]", unreadCount > 0 ? "text-[var(--app-text)]" : "text-[var(--app-subtle-text)]")}>
-                        {getMessagePreview(conversation.lastMessage)}
+                        {item.preview}
                       </p>
                       {unreadCount > 0 ? (
                         <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 py-0.5 text-[10px] font-bold text-[#041b10]">
                           {unreadCount}
+                        </span>
+                      ) : item.kind === "group" ? (
+                        <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
+                          {item.memberCount}
                         </span>
                       ) : null}
                     </div>
@@ -1695,90 +1822,6 @@ export function AppPage() {
                 </button>
               );
             })}
-          </div>
-        </div>
-      );
-    }
-
-    if (panel === "groups") {
-      return (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-[var(--surface-border)] px-5 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Grupos</h2>
-                <p className="mt-1 text-sm text-[var(--app-subtle-text)]">Salas compartidas y colaborativas.</p>
-              </div>
-              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
-            </div>
-          </div>
-
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
-            <form className="rounded-[22px] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
-              createGroup(event).catch(() => {
-                setStatusText("No fue posible crear el grupo.");
-              });
-            }}>
-              <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
-              <input
-                className="field-input mt-3"
-                onChange={(event) => setNewGroupName(event.target.value)}
-                placeholder="Nombre del grupo"
-                value={newGroupName}
-              />
-              <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                {contacts.length === 0 ? <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p> : null}
-                {contacts.map((contact) => (
-                  <label className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5" key={contact.id}>
-                    <input
-                      checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
-                      onChange={() => toggleGroupMember(contact.contactUser.id)}
-                      type="checkbox"
-                    />
-                    <span>{contact.alias || contact.contactUser.publicAlias}</span>
-                  </label>
-                ))}
-              </div>
-              <button className="primary-button mt-3 w-full" type="submit">
-                Crear grupo
-              </button>
-            </form>
-
-            <div className="mt-4 space-y-1">
-              {groupChats.map((group) => {
-                const selected = selectedGroupId === group.id;
-
-                return (
-                  <button
-                    className={clsx(
-                      "flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition",
-                      selected ? "bg-[var(--chat-item-active)]" : "hover:bg-[var(--chat-item-hover)]"
-                    )}
-                    key={group.id}
-                    onClick={() => {
-                      setSelectedGroupId(group.id);
-                      if (typeof window !== "undefined" && window.innerWidth < 1024) {
-                        setSidebarOpen(false);
-                      }
-                    }}
-                    type="button"
-                  >
-                    <Avatar name={group.name} />
-                    <div className="min-w-0 flex-1">
-                      <div className="flex items-center justify-between gap-2">
-                        <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{group.name}</p>
-                        <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
-                          {group.memberCount}
-                        </span>
-                      </div>
-                      <p className="mt-1 truncate text-[13px] text-[var(--app-subtle-text)]">
-                        {getMessagePreview(group.lastMessage)}
-                      </p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
           </div>
         </div>
       );
@@ -2020,6 +2063,8 @@ export function AppPage() {
                 label="Chats"
                 onClick={() => {
                   setPanel("chats");
+                  setInboxFilter("chats");
+                  setShowGroupCreator(false);
                   setSidebarOpen(true);
                 }}
               />
@@ -2030,6 +2075,7 @@ export function AppPage() {
                 label="Grupos"
                 onClick={() => {
                   setPanel("groups");
+                  setInboxFilter("groups");
                   setSidebarOpen(true);
                 }}
               />
@@ -2040,6 +2086,7 @@ export function AppPage() {
                 label="Contactos"
                 onClick={() => {
                   setPanel("contacts");
+                  setShowGroupCreator(false);
                   setSidebarOpen(true);
                 }}
               />
@@ -2070,6 +2117,7 @@ export function AppPage() {
                 )}
                 onClick={() => {
                   setPanel("profile");
+                  setShowGroupCreator(false);
                   setSidebarOpen(true);
                 }}
                 type="button"
