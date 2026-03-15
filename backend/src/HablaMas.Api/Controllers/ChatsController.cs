@@ -77,6 +77,10 @@ public sealed class ChatsController : ControllerBase
                     text = last.Text,
                     type = last.Type.ToString().ToLowerInvariant(),
                     last.ImageUrl,
+                    last.AttachmentUrl,
+                    last.AttachmentName,
+                    last.AttachmentContentType,
+                    last.AttachmentSizeBytes,
                     last.SenderId,
                     last.CreatedAt
                 }
@@ -131,6 +135,10 @@ public sealed class ChatsController : ControllerBase
                 m.Text,
                 type = m.Type.ToString().ToLowerInvariant(),
                 m.ImageUrl,
+                m.AttachmentUrl,
+                m.AttachmentName,
+                m.AttachmentContentType,
+                m.AttachmentSizeBytes,
                 m.CreatedAt,
                 status = statuses.TryGetValue(m.Id, out var s) ? s : (m.SenderId == userId ? MessageDeliveryStatus.Delivered.ToString() : MessageDeliveryStatus.Sent.ToString())
             });

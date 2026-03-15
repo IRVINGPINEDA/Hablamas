@@ -1,4 +1,12 @@
-export type ChatMessageType = "text" | "image";
+export type ChatMessageType = "text" | "image" | "video" | "file" | "audio";
+
+export interface ChatAttachmentDto {
+  imageUrl?: string;
+  attachmentUrl?: string;
+  attachmentName?: string;
+  attachmentContentType?: string;
+  attachmentSizeBytes?: number;
+}
 
 export interface AuthUser {
   id: string;
@@ -39,20 +47,18 @@ export interface ConversationSummary {
     id: string;
     text?: string;
     type: ChatMessageType;
-    imageUrl?: string;
     senderId: string;
     createdAt: string;
-  };
+  } & ChatAttachmentDto;
 }
 
-export interface MessageDto {
+export interface MessageDto extends ChatAttachmentDto {
   id: string;
   conversationId: string;
   senderId: string;
-  senderAlias: string;
+  senderAlias?: string;
   text?: string;
   type: ChatMessageType;
-  imageUrl?: string;
   createdAt: string;
   status: "Sent" | "Delivered" | "Seen";
 }
@@ -80,10 +86,9 @@ export interface GroupChatSummary {
     id: string;
     text?: string;
     type: ChatMessageType;
-    imageUrl?: string;
     senderId: string;
     createdAt: string;
-  };
+  } & ChatAttachmentDto;
 }
 
 export interface GroupMemberDto {
@@ -94,13 +99,12 @@ export interface GroupMemberDto {
   joinedAt: string;
 }
 
-export interface GroupMessageDto {
+export interface GroupMessageDto extends ChatAttachmentDto {
   id: string;
   groupChatId: string;
   senderId: string;
   senderAlias: string;
   text?: string;
   type: ChatMessageType;
-  imageUrl?: string;
   createdAt: string;
 }

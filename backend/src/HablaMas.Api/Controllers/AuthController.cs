@@ -25,6 +25,7 @@ public sealed class AuthController : ControllerBase
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IPasswordGenerator _passwordGenerator;
     private readonly IEmailService _emailService;
+    private readonly IEmailTemplateService _emailTemplateService;
     private readonly JwtOptions _jwtOptions;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
@@ -35,6 +36,7 @@ public sealed class AuthController : ControllerBase
         IJwtTokenService jwtTokenService,
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
+        IEmailTemplateService emailTemplateService,
         IOptions<JwtOptions> jwtOptions,
         IConfiguration configuration,
         ILogger<AuthController> logger)
@@ -44,6 +46,7 @@ public sealed class AuthController : ControllerBase
         _jwtTokenService = jwtTokenService;
         _passwordGenerator = passwordGenerator;
         _emailService = emailService;
+        _emailTemplateService = emailTemplateService;
         _jwtOptions = jwtOptions.Value;
         _configuration = configuration;
         _logger = logger;
@@ -65,7 +68,13 @@ public sealed class AuthController : ControllerBase
 
                 try
                 {
-                    await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", $"<p>Tu cuenta ya existe y esta pendiente de verificacion.</p><p>Verifica tu correo aqui: <a href='{verificationUrl}'>{verificationUrl}</a></p>");
+                    await _emailService.SendAsync(
+                        email,
+                        "Habla Mas - Verifica tu correo",
+                        _emailTemplateService.BuildVerificationEmail(
+                            recipientName: existing.PublicAlias,
+                            verifyUrl: verificationUrl,
+                            pendingVerification: true));
                 }
                 catch (Exception ex)
                 {
@@ -121,17 +130,15 @@ public sealed class AuthController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var verifyUrl = BuildAbsoluteUrl($"/verify-email?userId={user.Id}&token={encodedToken}");
 
-        var html = $@"
-<h2>Bienvenido a Habla Mas</h2>
-<p>Tu contrasena temporal es:</p>
-<p><strong>{temporaryPassword}</strong></p>
-<p>Debes verificar tu correo aqui:</p>
-<p><a href='{verifyUrl}'>{verifyUrl}</a></p>
-<p>Despues de iniciar sesion, se te pedira cambiar la contrasena.</p>";
-
         try
         {
-            await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", html);
+            await _emailService.SendAsync(
+                email,
+                "Habla Mas - Verifica tu correo",
+                _emailTemplateService.BuildVerificationEmail(
+                    recipientName: user.PublicAlias,
+                    verifyUrl: verifyUrl,
+                    temporaryPassword: temporaryPassword));
         }
         catch (Exception ex)
         {
@@ -212,7 +219,12 @@ public sealed class AuthController : ControllerBase
 
         try
         {
-            await _emailService.SendAsync(user.Email!, "Habla Mas - Verifica tu correo", $"<p>Verifica tu correo aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+            await _emailService.SendAsync(
+                user.Email!,
+                "Habla Mas - Verifica tu correo",
+                _emailTemplateService.BuildVerificationEmail(
+                    recipientName: user.PublicAlias,
+                    verifyUrl: verifyUrl));
         }
         catch (Exception ex)
         {
@@ -339,10 +351,14 @@ public sealed class AuthController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var resetUrl = BuildAbsoluteUrl($"/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(encodedToken)}");
 
-        var html = $"<p>Haz clic para restablecer tu contrasena:</p><p><a href='{resetUrl}'>{resetUrl}</a></p>";
         try
         {
-            await _emailService.SendAsync(user.Email!, "Habla Mas - Reset de contrasena", html);
+            await _emailService.SendAsync(
+                user.Email!,
+                "Habla Mas - Reset de contrasena",
+                _emailTemplateService.BuildPasswordResetEmail(
+                    recipientName: user.PublicAlias,
+                    resetUrl: resetUrl));
         }
         catch (Exception ex)
         {

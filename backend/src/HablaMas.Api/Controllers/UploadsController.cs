@@ -1,5 +1,6 @@
 using HablaMas.Api.Extensions;
 using HablaMas.Application.Interfaces;
+using HablaMas.Domain.Enums;
 using HablaMas.Infrastructure.Data;
 using HablaMas.Infrastructure.Options;
 using Microsoft.AspNetCore.Authorization;
@@ -19,6 +20,67 @@ public sealed class UploadsController : ControllerBase
         "image/jpeg",
         "image/png",
         "image/webp"
+    };
+
+    private static readonly HashSet<string> AllowedVideoTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "video/mp4",
+        "video/webm",
+        "video/quicktime"
+    };
+
+    private static readonly HashSet<string> AllowedAudioTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "audio/aac",
+        "audio/mp4",
+        "audio/mpeg",
+        "audio/ogg",
+        "audio/wav",
+        "audio/webm",
+        "audio/x-wav"
+    };
+
+    private static readonly HashSet<string> AllowedFileTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "application/json",
+        "application/msword",
+        "application/octet-stream",
+        "application/pdf",
+        "application/rtf",
+        "application/vnd.ms-excel",
+        "application/vnd.ms-powerpoint",
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "application/x-rar-compressed",
+        "application/x-zip-compressed",
+        "application/zip",
+        "text/csv",
+        "text/plain"
+    };
+
+    private static readonly HashSet<string> AllowedFileExtensions = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ".csv",
+        ".doc",
+        ".docx",
+        ".json",
+        ".m4a",
+        ".mov",
+        ".mp3",
+        ".mp4",
+        ".ogg",
+        ".pdf",
+        ".ppt",
+        ".pptx",
+        ".rar",
+        ".rtf",
+        ".txt",
+        ".wav",
+        ".webm",
+        ".xls",
+        ".xlsx",
+        ".zip"
     };
 
     private readonly IFileStorageService _fileStorageService;
@@ -64,6 +126,105 @@ public sealed class UploadsController : ControllerBase
         var url = await _fileStorageService.SaveAsync(stream, $"message{extension}", HttpContext.RequestAborted);
 
         return Ok(new { url, messageType = "image" });
+    }
+
+    [HttpPost("message-attachment")]
+    [RequestSizeLimit(104_857_600)]
+    public async Task<IActionResult> UploadMessageAttachment([FromForm] IFormFile file)
+    {
+        var userId = User.GetRequiredUserId();
+        var accessResult = await EnsureCanChatAsync(userId);
+        if (accessResult is not null)
+        {
+            return accessResult;
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails { Title = "File required" });
+        }
+
+        var messageType = ResolveAttachmentMessageType(file.ContentType, Path.GetExtension(file.FileName));
+        if (messageType is null)
+        {
+            return BadRequest(new ProblemDetails { Title = "Unsupported attachment type" });
+        }
+
+        var maxBytes = _uploadOptions.MaxAttachmentMb * 1024 * 1024;
+        if (file.Length > maxBytes)
+        {
+            return BadRequest(new ProblemDetails { Title = $"Max attachment size is {_uploadOptions.MaxAttachmentMb}MB" });
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        await using var stream = file.OpenReadStream();
+        var url = await _fileStorageService.SaveAsync(stream, $"attachment{extension}", HttpContext.RequestAborted);
+
+        return Ok(new
+        {
+            url,
+            messageType = messageType.Value.ToString().ToLowerInvariant(),
+            attachmentName = file.FileName,
+            attachmentContentType = file.ContentType,
+            attachmentSizeBytes = file.Length
+        });
+    }
+
+    private static MessageType? ResolveAttachmentMessageType(string? contentType, string? extension)
+    {
+        var normalizedContentType = contentType?.Split(';', 2, StringSplitOptions.TrimEntries)[0];
+
+        if (!string.IsNullOrWhiteSpace(normalizedContentType))
+        {
+            if (AllowedImageTypes.Contains(normalizedContentType))
+            {
+                return MessageType.Image;
+            }
+
+            if (AllowedVideoTypes.Contains(normalizedContentType))
+            {
+                return MessageType.Video;
+            }
+
+            if (AllowedAudioTypes.Contains(normalizedContentType))
+            {
+                return MessageType.Audio;
+            }
+
+            if (AllowedFileTypes.Contains(normalizedContentType))
+            {
+                return MessageType.File;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(extension))
+        {
+            if (extension.Equals(".mp4", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".mov", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageType.Video;
+            }
+
+            if (extension.Equals(".aac", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".m4a", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".mp3", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".ogg", StringComparison.OrdinalIgnoreCase)
+                || extension.Equals(".wav", StringComparison.OrdinalIgnoreCase))
+            {
+                return MessageType.Audio;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(extension) && AllowedFileExtensions.Contains(extension))
+        {
+            return extension.Equals(".webm", StringComparison.OrdinalIgnoreCase)
+                && !string.IsNullOrWhiteSpace(normalizedContentType)
+                && normalizedContentType.StartsWith("audio/", StringComparison.OrdinalIgnoreCase)
+                    ? MessageType.Audio
+                    : MessageType.File;
+        }
+
+        return null;
     }
 
     private async Task<IActionResult?> EnsureCanChatAsync(Guid userId)

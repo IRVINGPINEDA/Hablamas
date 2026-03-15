@@ -65,6 +65,10 @@ public sealed class GroupChatsController : ControllerBase
                     text = last.Text,
                     type = last.Type.ToString().ToLowerInvariant(),
                     last.ImageUrl,
+                    last.AttachmentUrl,
+                    last.AttachmentName,
+                    last.AttachmentContentType,
+                    last.AttachmentSizeBytes,
                     last.SenderId,
                     last.CreatedAt
                 }
@@ -254,6 +258,10 @@ public sealed class GroupChatsController : ControllerBase
                 m.Text,
                 type = m.Type.ToString().ToLowerInvariant(),
                 m.ImageUrl,
+                m.AttachmentUrl,
+                m.AttachmentName,
+                m.AttachmentContentType,
+                m.AttachmentSizeBytes,
                 m.CreatedAt
             });
 
@@ -287,11 +295,17 @@ public sealed class GroupChatsController : ControllerBase
         var type = request.Type.Trim().ToLowerInvariant() switch
         {
             "image" => MessageType.Image,
+            "video" => MessageType.Video,
+            "file" => MessageType.File,
+            "audio" => MessageType.Audio,
             _ => MessageType.Text
         };
 
         var text = request.Text?.Trim();
         var imageUrl = request.ImageUrl?.Trim();
+        var attachmentUrl = request.AttachmentUrl?.Trim();
+        var attachmentName = request.AttachmentName?.Trim();
+        var attachmentContentType = request.AttachmentContentType?.Trim();
         if (type == MessageType.Text && string.IsNullOrWhiteSpace(text))
         {
             return BadRequest(new ProblemDetails { Title = "Text is required for text messages." });
@@ -302,6 +316,14 @@ public sealed class GroupChatsController : ControllerBase
             return BadRequest(new ProblemDetails { Title = "ImageUrl is required for image messages." });
         }
 
+        if (type is MessageType.Video or MessageType.File or MessageType.Audio)
+        {
+            if (string.IsNullOrWhiteSpace(attachmentUrl))
+            {
+                return BadRequest(new ProblemDetails { Title = "AttachmentUrl is required for attachment messages." });
+            }
+        }
+
         var message = new GroupChatMessage
         {
             Id = Guid.NewGuid(),
@@ -310,6 +332,10 @@ public sealed class GroupChatsController : ControllerBase
             Type = type,
             Text = type == MessageType.Text ? text : null,
             ImageUrl = type == MessageType.Image ? imageUrl : null,
+            AttachmentUrl = type == MessageType.Text ? null : (type == MessageType.Image ? imageUrl : attachmentUrl),
+            AttachmentName = type == MessageType.Text ? null : attachmentName,
+            AttachmentContentType = type == MessageType.Text ? null : attachmentContentType,
+            AttachmentSizeBytes = type == MessageType.Text ? null : request.AttachmentSizeBytes,
             CreatedAt = DateTimeOffset.UtcNow,
             ClientMessageId = string.IsNullOrWhiteSpace(request.ClientMessageId) ? null : request.ClientMessageId.Trim()
         };
@@ -326,6 +352,10 @@ public sealed class GroupChatsController : ControllerBase
             message.Text,
             type = message.Type.ToString().ToLowerInvariant(),
             message.ImageUrl,
+            message.AttachmentUrl,
+            message.AttachmentName,
+            message.AttachmentContentType,
+            message.AttachmentSizeBytes,
             message.CreatedAt
         });
     }
