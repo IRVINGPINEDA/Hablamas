@@ -35,6 +35,14 @@ type ChatRenderableMessage = Pick<MessageDto, "id" | "type" | "text" | "imageUrl
 
 type Panel = "chats" | "groups" | "contacts" | "profile";
 
+
+const panelLabels: Record<Panel, string> = {
+  chats: "Chats",
+  groups: "Grupos",
+  contacts: "Contactos",
+  profile: "Perfil"
+};
+
 const MESSAGE_WRAP_LENGTH = 50;
 const ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
 
@@ -153,7 +161,7 @@ export function AppPage( ) {
     bio: "",
     publicAlias: "",
     theme: 1,
-    accentColor: "#6366f1"
+    accentColor: "#5f7888"
   });
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
@@ -171,6 +179,11 @@ export function AppPage( ) {
   const currentGroup = useMemo(
     () => groupChats.find((group) => group.id === selectedGroupId) ?? null,
     [groupChats, selectedGroupId]
+  );
+
+  const onlineContacts = useMemo(
+    () => contacts.filter((contact) => presenceByUser[contact.contactUser.id]).length,
+    [contacts, presenceByUser]
   );
 
   useEffect(() => {
@@ -218,7 +231,7 @@ export function AppPage( ) {
       bio: response.data.bio ?? "",
       publicAlias: response.data.publicAlias ?? "",
       theme: response.data.theme,
-      accentColor: response.data.accentColor ?? "#6366f1"
+      accentColor: response.data.accentColor ?? "#5f7888"
     });
   };
 
@@ -760,201 +773,78 @@ export function AppPage( ) {
     return <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>;
   };
 
-  const renderProfileMain = () => (
-    <section className="min-h-0 flex-1 overflow-y-auto bg-slate-50/80 p-4 md:p-6">
-      <form
-        className="mx-auto grid max-w-5xl gap-6 xl:grid-cols-[320px_minmax(0,1fr)]"
-        onSubmit={(event) => {
-          saveProfile(event).catch(() => {
-            setStatusText("No fue posible actualizar el perfil.");
-          });
-        }}
-      >
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Perfil</p>
-          <div className="mt-6 flex flex-col items-center text-center">
-            {user?.profileImageUrl ? (
-              <img
-                alt={profile.publicAlias || user.publicAlias}
-                className="h-28 w-28 rounded-full object-cover ring-4 ring-indigo-100"
-                src={user.profileImageUrl}
-              />
-            ) : (
-              <div className="flex h-28 w-28 items-center justify-center rounded-full bg-indigo-100 text-2xl font-semibold text-indigo-700 ring-4 ring-indigo-100">
-                {getInitials(profile.publicAlias || user?.publicAlias || "HM")}
-              </div>
-            )}
-
-            <p className="mt-4 text-xl font-semibold text-slate-900">{profile.publicAlias || user?.publicAlias}</p>
-            <p className="text-sm text-slate-500">Codigo publico: {user?.publicCode}</p>
-
-            <label className="mt-5 w-full cursor-pointer rounded-2xl border border-slate-300 px-4 py-3 text-sm font-medium text-slate-700 transition hover:border-indigo-300 hover:text-indigo-700">
-              Cambiar foto
-              <input
-                className="hidden"
-                accept="image/png,image/jpeg,image/webp"
-                type="file"
-                onChange={(event) => {
-                  uploadProfileImage(event).catch(() => {
-                    setStatusText("No fue posible subir la foto.");
-                  });
-                }}
-              />
-            </label>
-
-            <div className="mt-6 w-full rounded-2xl bg-slate-50 px-4 py-4 text-left">
-              <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Vista rapida</p>
-              <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
-                <span>Tema</span>
-                <span>{profile.theme === 2 ? "Oscuro" : "Claro"}</span>
-              </div>
-              <div className="mt-3 flex items-center justify-between text-sm text-slate-600">
-                <span>Color</span>
-                <span className="inline-flex items-center gap-2">
-                  <span className="h-4 w-4 rounded-full border border-slate-200" style={{ backgroundColor: profile.accentColor }} />
-                  {profile.accentColor}
-                </span>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex flex-col gap-2 border-b border-slate-100 pb-5 md:flex-row md:items-end md:justify-between">
-            <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Configuracion</p>
-              <h2 className="mt-2 text-2xl font-semibold text-slate-900">Ajustes de tu cuenta</h2>
-            </div>
-            <p className="text-sm text-slate-500">Actualiza alias, bio, tema y color de acento.</p>
-          </div>
-
-          <div className="mt-6 grid gap-5 md:grid-cols-2">
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">Apodo publico</span>
-              <input
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-                placeholder="Tu nombre visible"
-                value={profile.publicAlias}
-                onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))}
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">Tema</span>
-              <select
-                className="w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-                value={profile.theme}
-                onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}
-              >
-                <option value={1}>Claro</option>
-                <option value={2}>Oscuro</option>
-              </select>
-            </label>
-
-            <label className="space-y-2 md:col-span-2">
-              <span className="text-sm font-medium text-slate-700">Bio</span>
-              <textarea
-                className="min-h-36 w-full rounded-2xl border border-slate-300 px-4 py-3 text-sm outline-none transition focus:border-indigo-400 focus:ring-4 focus:ring-indigo-100"
-                placeholder="Cuenta algo sobre ti"
-                value={profile.bio}
-                onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))}
-              />
-            </label>
-
-            <label className="space-y-2">
-              <span className="text-sm font-medium text-slate-700">Color de acento</span>
-              <div className="flex items-center gap-3 rounded-2xl border border-slate-300 px-4 py-3">
-                <input
-                  className="h-12 w-16 cursor-pointer rounded-xl border-0 bg-transparent p-0"
-                  type="color"
-                  value={profile.accentColor}
-                  onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))}
-                />
-                <div>
-                  <p className="text-sm font-medium text-slate-800">{profile.accentColor}</p>
-                  <p className="text-xs text-slate-500">Se usa como color personalizado en tu cuenta.</p>
-                </div>
-              </div>
-            </label>
-
-            <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-4 py-4">
-              <p className="text-sm font-medium text-slate-700">Consejo</p>
-              <p className="mt-2 text-sm leading-6 text-slate-500">
-                Usa un alias corto y una bio breve para que tu perfil se vea limpio en chats y grupos.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-6 flex justify-end">
-            <button className="rounded-2xl bg-indigo-600 px-6 py-3 text-sm font-semibold text-white" type="submit">
-              Guardar cambios
-            </button>
-          </div>
-        </div>
-      </form>
-    </section>
-  );
-
   const renderChatMain = () => {
     if (!currentConversation) {
       return (
-        <div className="m-auto text-center text-slate-500">
-          <p className="text-lg font-medium">Selecciona una conversacion</p>
-          <p className="text-sm">Agrega contactos para comenzar.</p>
+        <div className="m-auto max-w-md text-center text-slate-500">
+          <p className="eyebrow-label">Mensajeria privada</p>
+          <p className="mt-3 text-2xl font-bold text-slate-900">Selecciona una conversacion</p>
+          <p className="mt-2 text-sm leading-6">Agrega contactos para comenzar o cambia al panel de contactos para organizar tus alias.</p>
         </div>
       );
     }
 
     return (
       <>
-        <header className="border-b border-slate-200 px-5 py-4">
-          <p className="text-xs text-slate-500">Chat privado</p>
-          <div className="mt-2 flex items-center gap-3">
-            <div className="relative">
-              {currentConversation.contact.profileImageUrl ? (
-                <img
-                  alt={currentConversation.contact.alias || currentConversation.contact.publicAlias}
-                  className="h-14 w-14 rounded-full object-cover ring-2 ring-white"
-                  src={currentConversation.contact.profileImageUrl}
-                />
-              ) : (
-                <div className="flex h-14 w-14 items-center justify-center rounded-full bg-indigo-100 text-sm font-semibold text-indigo-700 ring-2 ring-white">
-                  {getInitials(currentConversation.contact.alias || currentConversation.contact.publicAlias)}
-                </div>
-              )}
-              <span
-                className={clsx(
-                  "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white",
-                  presenceByUser[currentConversation.contact.id] ? "bg-emerald-500" : "bg-slate-300"
+        <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                {currentConversation.contact.profileImageUrl ? (
+                  <img
+                    alt={currentConversation.contact.alias || currentConversation.contact.publicAlias}
+                    className="h-14 w-14 rounded-full object-cover ring-2 ring-white"
+                    src={currentConversation.contact.profileImageUrl}
+                  />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 ring-2 ring-white">
+                    {getInitials(currentConversation.contact.alias || currentConversation.contact.publicAlias)}
+                  </div>
                 )}
-              />
-            </div>
+                <span
+                  className={clsx(
+                    "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white",
+                    presenceByUser[currentConversation.contact.id] ? "bg-emerald-500" : "bg-slate-300"
+                  )}
+                />
+              </div>
 
-            <div>
-              <h2 className="text-lg font-semibold text-slate-900">
-                {currentConversation.contact.alias || currentConversation.contact.publicAlias}
-              </h2>
-              <p className="text-xs text-slate-500">
-                SignalR: {HubConnectionState[connectionState]}
-                {typingByConversation[currentConversation.id] ? ` | ${typingByConversation[currentConversation.id]} esta escribiendo...` : ""}
-              </p>
+              <div>
+                <p className="eyebrow-label">Chat privado</p>
+                <h2 className="mt-2 text-xl font-bold text-slate-950">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className={clsx("rounded-full px-2.5 py-1 font-semibold", presenceByUser[currentConversation.contact.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                    {presenceByUser[currentConversation.contact.id] ? "En linea" : "Desconectado"}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                    SignalR: {HubConnectionState[connectionState]}
+                  </span>
+                </div>
+              </div>
             </div>
+            {typingByConversation[currentConversation.id] ? (
+              <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
+                {typingByConversation[currentConversation.id]} esta escribiendo...
+              </div>
+            ) : null}
           </div>
         </header>
 
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+        <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
           {messages.map((message) => {
             const own = message.senderId === user?.id;
+            const isAttachmentMessage = message.type !== "text";
             return (
               <div
                 key={message.id}
                 className={clsx(
-                  "w-fit max-w-[78%] break-words rounded-2xl px-4 py-3 text-sm",
-                  own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800"
+                  "max-w-[88%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[78%]",
+                  own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
+                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
                 )}
               >
                 {renderMessageContent(message)}
-                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
                 </p>
               </div>
@@ -968,37 +858,49 @@ export function AppPage( ) {
   const renderGroupMain = () => {
     if (!currentGroup) {
       return (
-        <div className="m-auto text-center text-slate-500">
-          <p className="text-lg font-medium">Selecciona un grupo</p>
-          <p className="text-sm">Crea uno nuevo desde el panel lateral.</p>
+        <div className="m-auto max-w-md text-center text-slate-500">
+          <p className="eyebrow-label">Conversaciones grupales</p>
+          <p className="mt-3 text-2xl font-bold text-slate-900">Selecciona un grupo</p>
+          <p className="mt-2 text-sm leading-6">Crea uno nuevo desde el panel lateral y agrega miembros de tus contactos.</p>
         </div>
       );
     }
 
     return (
       <>
-        <header className="border-b border-slate-200 px-5 py-4">
-          <p className="text-xs text-slate-500">Grupo</p>
-          <h2 className="text-lg font-semibold text-slate-900">{currentGroup.name}</h2>
-          <p className="text-xs text-slate-500">
-            {groupMembers.length} miembros
-          </p>
+        <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="eyebrow-label">Grupo activo</p>
+              <h2 className="mt-2 text-xl font-bold text-slate-950">{currentGroup.name}</h2>
+              <p className="mt-2 text-xs text-slate-500">{groupMembers.length} miembros</p>
+            </div>
+            <div className="flex max-w-full flex-wrap gap-2">
+              {groupMembers.slice(0, 4).map((member) => (
+                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600" key={member.id}>
+                  {member.publicAlias}
+                </span>
+              ))}
+            </div>
+          </div>
         </header>
 
-        <section className="min-h-0 flex-1 space-y-3 overflow-y-auto p-5">
+        <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
+            const isAttachmentMessage = message.type !== "text";
             return (
               <div
                 key={message.id}
                 className={clsx(
-                  "w-fit max-w-[82%] break-words rounded-2xl px-4 py-3 text-sm",
-                  own ? "ml-auto bg-indigo-500 text-white" : "bg-slate-100 text-slate-800"
+                  "max-w-[90%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[82%]",
+                  own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
+                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
                 )}
               >
-                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-indigo-700">{message.senderAlias}</p> : null}
+                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700">{message.senderAlias}</p> : null}
                 {renderMessageContent(message)}
-                <p className={clsx("mt-2 text-[10px]", own ? "text-indigo-100" : "text-slate-500")}>
+                <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()}
                 </p>
               </div>
@@ -1012,13 +914,13 @@ export function AppPage( ) {
   const renderSidebarContent = () => {
     if (panel === "chats") {
       return (
-        <div className="mt-4 space-y-2">
+        <div className="space-y-3">
           {conversations.map((conversation) => (
             <button
               key={conversation.id}
               className={clsx(
-                "w-full rounded-xl border px-4 py-3 text-left",
-                selectedConversationId === conversation.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+                "w-full rounded-[22px] border px-4 py-3 text-left transition",
+                selectedConversationId === conversation.id ? "border-brand-300 bg-brand-50 shadow-[0_18px_26px_-24px_rgba(79,101,115,0.95)]" : "border-white/70 bg-white/85 hover:border-brand-200 hover:bg-white"
               )}
               onClick={() => setSelectedConversationId(conversation.id)}
             >
@@ -1041,23 +943,23 @@ export function AppPage( ) {
 
     if (panel === "groups") {
       return (
-        <div className="mt-4 space-y-3">
-          <form className="space-y-2 rounded-xl border border-slate-200 bg-slate-50 p-3" onSubmit={(event) => {
+        <div className="space-y-4">
+          <form className="rounded-[24px] border border-white/70 bg-white/82 p-4" onSubmit={(event) => {
             createGroup(event).catch(() => {
               setStatusText("No fue posible crear el grupo.");
             });
           }}>
             <p className="text-xs font-semibold uppercase text-slate-500">Nuevo grupo</p>
             <input
-              className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm"
+              className="field-input mt-3"
               placeholder="Nombre del grupo"
               value={newGroupName}
               onChange={(event) => setNewGroupName(event.target.value)}
             />
-            <div className="max-h-32 space-y-1 overflow-auto rounded-lg border border-slate-200 bg-white p-2">
+            <div className="mt-3 max-h-40 space-y-1 overflow-auto rounded-2xl border border-slate-200 bg-slate-50/85 p-3">
               {contacts.length === 0 ? <p className="text-xs text-slate-500">Agrega contactos primero.</p> : null}
               {contacts.map((contact) => (
-                <label key={contact.id} className="flex items-center gap-2 text-xs text-slate-700">
+                <label key={contact.id} className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-slate-700 transition hover:bg-white">
                   <input
                     type="checkbox"
                     checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
@@ -1067,24 +969,24 @@ export function AppPage( ) {
                 </label>
               ))}
             </div>
-            <button className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-sm font-semibold text-white" type="submit">
+            <button className="primary-button mt-3 w-full" type="submit">
               Crear grupo
             </button>
           </form>
 
-          <div className="space-y-2">
+          <div className="space-y-3">
             {groupChats.map((group) => (
               <button
                 key={group.id}
                 className={clsx(
-                  "w-full rounded-xl border px-4 py-3 text-left",
-                  selectedGroupId === group.id ? "border-indigo-400 bg-indigo-50" : "border-slate-200 bg-white"
+                  "w-full rounded-[22px] border px-4 py-3 text-left transition",
+                  selectedGroupId === group.id ? "border-brand-300 bg-brand-50 shadow-[0_18px_26px_-24px_rgba(79,101,115,0.95)]" : "border-white/70 bg-white/85 hover:border-brand-200 hover:bg-white"
                 )}
                 onClick={() => setSelectedGroupId(group.id)}
               >
                 <div className="flex items-center justify-between gap-2">
                   <p className="text-[15px] font-medium text-slate-900">{group.name}</p>
-                  <span className="rounded-full bg-indigo-100 px-2 py-0.5 text-[10px] text-indigo-700">{group.memberCount}</span>
+                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-700">{group.memberCount}</span>
                 </div>
                 {group.lastMessage ? (
                   <p className="mt-1 truncate text-xs text-slate-500">{getMessagePreview(group.lastMessage)}</p>
@@ -1100,22 +1002,107 @@ export function AppPage( ) {
 
     if (panel === "contacts") {
       return (
-        <div className="mt-4 space-y-3">
-          <form className="flex gap-2" onSubmit={(event) => {
+        <div className="space-y-4">
+          <article className="rounded-[24px] border border-white/70 bg-white/82 p-4">
+            <p className="eyebrow-label">Resumen</p>
+            <h3 className="mt-2 text-lg font-bold text-slate-900">Tus contactos</h3>
+            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <p className="text-xs uppercase text-slate-400">Total</p>
+                <p className="mt-1 text-xl font-bold text-slate-900">{contacts.length}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-3">
+                <p className="text-xs uppercase text-slate-400">En linea</p>
+                <p className="mt-1 text-xl font-bold text-emerald-600">{onlineContacts}</p>
+              </div>
+            </div>
+          </article>
+
+          <article className="rounded-[24px] border border-white/70 bg-brand-50/80 p-4 text-sm leading-6 text-slate-600">
+            Usa alias locales para encontrar conversaciones mas rapido y mantener tu agenda organizada.
+          </article>
+        </div>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        <article className="rounded-[24px] border border-white/70 bg-white/82 p-4">
+          <p className="eyebrow-label">Vista rapida</p>
+          <h3 className="mt-2 text-lg font-bold text-slate-900">{profile.publicAlias || user?.publicAlias}</h3>
+          <p className="mt-2 text-sm leading-6 text-slate-500">{profile.bio || "Completa tu bio para dar contexto a otras personas."}</p>
+        </article>
+
+        <article className="rounded-[24px] border border-white/70 bg-slate-50 p-4 text-sm">
+          <p className="text-xs uppercase text-slate-400">Color de acento</p>
+          <div className="mt-3 flex items-center gap-3">
+            <span className="h-5 w-5 rounded-full border border-slate-200" style={{ backgroundColor: profile.accentColor }} />
+            <span className="font-medium text-slate-700">{profile.accentColor}</span>
+          </div>
+        </article>
+      </div>
+    );
+  };
+
+  const renderContactsWorkspace = () => (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+        <p className="eyebrow-label">Agenda</p>
+        <h2 className="mt-2 text-xl font-bold text-slate-950">Tus contactos</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Agrega personas por codigo y define alias locales para encontrarlas mas rapido.</p>
+      </header>
+
+      <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
             addContactByCode(event).catch(() => {
               setStatusText("No fue posible agregar el contacto.");
             });
           }}>
-            <input className="w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
-            <button className="rounded-lg bg-indigo-600 px-3 py-2 text-sm font-medium text-white" type="submit">Agregar</button>
+            <p className="eyebrow-label">Agregar contacto</p>
+            <h3 className="mt-2 text-lg font-bold text-slate-900">Invita por codigo publico</h3>
+            <p className="mt-2 text-sm text-slate-500">Comparte el codigo de la otra persona o pega uno aqui para agregarla a tu red.</p>
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row">
+              <input className="field-input" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
+              <button className="primary-button sm:min-w-36" type="submit">Agregar</button>
+            </div>
           </form>
 
+          <div className="surface-panel p-4 sm:p-5">
+            <p className="eyebrow-label">Estadisticas</p>
+            <div className="mt-4 grid gap-3 sm:grid-cols-3">
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Total</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{contacts.length}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">En linea</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-600">{onlineContacts}</p>
+              </div>
+              <div className="rounded-2xl bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Grupos</p>
+                <p className="mt-2 text-2xl font-bold text-slate-900">{groupChats.length}</p>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-4 grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
           {contacts.map((contact) => (
-            <div key={contact.id} className="rounded-xl border border-slate-200 p-3">
-              <p className="text-sm font-medium text-slate-900">{contact.alias || contact.contactUser.publicAlias}</p>
-              <p className="text-xs text-slate-500">Codigo: {contact.contactUser.publicCode}</p>
+            <article className="surface-panel p-4 sm:p-5" key={contact.id}>
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">{contact.alias || contact.contactUser.publicAlias}</h3>
+                  <p className="mt-1 text-xs text-slate-500">Codigo: {contact.contactUser.publicCode}</p>
+                </div>
+                <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", presenceByUser[contact.contactUser.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
+                  {presenceByUser[contact.contactUser.id] ? "En linea" : "Sin conexion"}
+                </span>
+              </div>
+
+              <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Alias local</label>
               <input
-                className="mt-2 w-full rounded-lg border border-slate-300 px-2 py-1 text-xs"
+                className="field-input mt-2"
                 placeholder="Alias local"
                 defaultValue={contact.alias ?? ""}
                 onBlur={(event) => {
@@ -1124,100 +1111,169 @@ export function AppPage( ) {
                   });
                 }}
               />
-            </div>
+            </article>
           ))}
-        </div>
-      );
-    }
 
-    return (
-      <div className="mt-4 space-y-3">
-        <div className="rounded-[24px] border border-slate-200 bg-white p-4 shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">Perfil</p>
-          <div className="mt-4 flex items-center gap-3">
-            {user?.profileImageUrl ? (
-              <img alt={profile.publicAlias || user.publicAlias} className="h-16 w-16 rounded-full object-cover" src={user.profileImageUrl} />
-            ) : (
-              <div className="flex h-16 w-16 items-center justify-center rounded-full bg-indigo-100 text-lg font-semibold text-indigo-700">
-                {getInitials(profile.publicAlias || user?.publicAlias || "HM")}
+          {contacts.length === 0 ? (
+            <div className="surface-panel p-6 text-center text-slate-500 md:col-span-2 2xl:col-span-3">
+              <p className="text-lg font-semibold text-slate-900">Aun no tienes contactos</p>
+              <p className="mt-2 text-sm">Agrega tu primer contacto con su codigo publico para empezar a chatear.</p>
+            </div>
+          ) : null}
+        </div>
+      </section>
+    </div>
+  );
+
+  const renderProfileWorkspace = () => (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+        <p className="eyebrow-label">Configuracion personal</p>
+        <h2 className="mt-2 text-xl font-bold text-slate-950">Tu perfil</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Actualiza la informacion visible para ti y para las personas que conversan contigo.</p>
+      </header>
+
+      <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
+        <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
+          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
+            saveProfile(event).catch(() => {
+              setStatusText("No fue posible actualizar el perfil.");
+            });
+          }}>
+            <p className="eyebrow-label">Datos visibles</p>
+            <div className="mt-4 grid gap-4 sm:grid-cols-2">
+              <input className="field-input" placeholder="Apodo publico" value={profile.publicAlias} onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))} />
+              <select className="field-input" value={profile.theme} onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}>
+                <option value={1}>Tema claro</option>
+                <option value={2}>Tema oscuro</option>
+              </select>
+            </div>
+            <textarea className="field-textarea mt-4 min-h-36" placeholder="Bio" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} />
+            <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
+              <label className="rounded-[24px] border border-dashed border-brand-300 bg-brand-50/75 p-4 text-sm text-slate-600" htmlFor="profile-image">
+                <span className="block font-semibold text-slate-900">Foto de perfil</span>
+                <span className="mt-1 block text-xs">Selecciona jpg, png o webp para actualizar tu avatar.</span>
+                <input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp" className="mt-3 block w-full text-xs" onChange={(event) => {
+                  uploadProfileImage(event).catch(() => {
+                    setStatusText("No fue posible subir la foto.");
+                  });
+                }} />
+              </label>
+              <div className="justify-self-start rounded-[24px] border border-slate-200 bg-white p-4">
+                <p className="text-xs uppercase text-slate-400">Color acento</p>
+                <input className="mt-3 h-12 w-24 cursor-pointer rounded-xl border border-slate-200 bg-white p-1" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
               </div>
-            )}
-            <div className="min-w-0">
-              <p className="truncate text-base font-semibold text-slate-900">{profile.publicAlias || user?.publicAlias}</p>
-              <p className="truncate text-xs text-slate-500">{user?.email}</p>
-              <p className="mt-1 text-xs text-slate-400">Edita tus datos en el panel principal.</p>
             </div>
-          </div>
-        </div>
+            <button className="primary-button mt-4 w-full sm:w-auto" type="submit">Guardar perfil</button>
+          </form>
 
-        <div className="rounded-[24px] border border-slate-200 bg-slate-900 p-4 text-white shadow-sm">
-          <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-300">Ajustes activos</p>
-          <div className="mt-4 space-y-3 text-sm">
-            <div className="flex items-center justify-between">
-              <span className="text-slate-300">Tema</span>
-              <span>{profile.theme === 2 ? "Oscuro" : "Claro"}</span>
+          <aside className="surface-panel p-4 sm:p-5">
+            <p className="eyebrow-label">Vista rapida</p>
+            <div className="mt-4 rounded-[28px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-5 text-white">
+              <p className="text-xs uppercase tracking-[0.2em] text-white/70">Perfil publico</p>
+              <h3 className="mt-3 text-2xl font-bold">{profile.publicAlias || user?.publicAlias || "Sin alias"}</h3>
+              <p className="mt-2 text-sm leading-6 text-white/80">{profile.bio || "Tu bio aparecera aqui cuando la completes."}</p>
+              <div className="mt-5 flex items-center gap-3">
+                <span className="h-4 w-4 rounded-full border border-white/60" style={{ backgroundColor: profile.accentColor }} />
+                <span className="text-sm text-white/80">{profile.accentColor}</span>
+              </div>
             </div>
-            <div className="flex items-center justify-between gap-3">
-              <span className="text-slate-300">Color</span>
-              <span className="inline-flex items-center gap-2">
-                <span className="h-4 w-4 rounded-full border border-white/30" style={{ backgroundColor: profile.accentColor }} />
-                {profile.accentColor}
-              </span>
+            <div className="mt-4 rounded-[24px] bg-slate-50 p-4 text-sm text-slate-600">
+              <p className="font-semibold text-slate-900">Consejo</p>
+              <p className="mt-2 leading-6">Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y grupales.</p>
             </div>
-          </div>
+          </aside>
         </div>
-      </div>
-    );
-  };
+      </section>
+    </div>
+  );
 
   return (
-    <div className="min-h-dvh bg-[radial-gradient(circle_at_top_left,_#dbe4ff,_#f7f9ff_45%,_#eef2ff_100%)] p-0 sm:p-3 lg:p-5">
-      <div className="mx-auto h-[100dvh] w-full overflow-hidden rounded-none border border-indigo-100 bg-white shadow-2xl sm:h-[calc(100dvh-1.5rem)] sm:rounded-[30px] lg:h-[calc(100dvh-2.5rem)]">
-        <div className="flex h-full min-h-0 flex-col lg:flex-row">
-          <aside className="w-full border-b border-slate-200 bg-slate-50 p-5 lg:flex lg:w-[430px] lg:flex-col lg:border-b-0 lg:border-r">
-            <div className="flex items-center justify-between">
-              <div>
-                <h1 className="text-2xl font-semibold text-slate-900">Habla Mas</h1>
-                <p className="text-sm text-slate-500">{user?.publicAlias} ({user?.publicCode})</p>
-              </div>
-              <button className="rounded-lg border border-slate-300 px-3 py-1.5 text-sm text-slate-700" onClick={() => logout().catch(() => undefined)}>
-                Salir
-              </button>
+    <div className="min-h-screen px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
+      <div className="mx-auto flex max-w-[1760px] flex-col gap-4">
+        <header className="surface-panel overflow-hidden p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div>
+              <p className="eyebrow-label">Centro de conversaciones</p>
+              <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">Habla Mas</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
+                Gestiona chats privados, grupos, contactos y tu perfil desde un espacio mas amplio y comodo.
+              </p>
             </div>
 
-            <nav className="mt-4 grid grid-cols-2 gap-2">
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "chats" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("chats")}>Chats</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "groups" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("groups")}>Grupos</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "contacts" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("contacts")}>Contactos</button>
-              <button className={clsx("rounded-lg px-3 py-2 text-sm font-semibold", panel === "profile" ? "bg-indigo-600 text-white" : "border border-slate-300 text-slate-700")} onClick={() => setPanel("profile")}>Perfil</button>
-            </nav>
+            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[420px]">
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Privados</p>
+                <p className="mt-2 text-2xl font-bold text-slate-950">{conversations.length}</p>
+              </div>
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Grupos</p>
+                <p className="mt-2 text-2xl font-bold text-slate-950">{groupChats.length}</p>
+              </div>
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">En linea</p>
+                <p className="mt-2 text-2xl font-bold text-emerald-600">{onlineContacts}</p>
+              </div>
+            </div>
+          </div>
+        </header>
 
-            <Link className="mt-2 block rounded-lg border border-indigo-200 bg-indigo-50 px-3 py-2 text-center text-sm font-semibold text-indigo-700" to="/chatbot">
-              Chatbot IA
-            </Link>
+        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
+          <aside className="surface-panel flex min-h-[260px] flex-col overflow-hidden">
+            <div className="border-b border-white/70 px-4 py-4 sm:px-5">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="eyebrow-label">Cuenta activa</p>
+                  <h2 className="mt-2 text-xl font-bold text-slate-950">{user?.publicAlias}</h2>
+                  <p className="mt-1 text-sm text-slate-500">{user?.publicCode}</p>
+                </div>
+                <button className="secondary-button px-3 py-2 text-xs sm:text-sm" onClick={() => logout().catch(() => undefined)}>
+                  Salir
+                </button>
+              </div>
 
-            <div className="mt-2 min-h-0 flex-1 overflow-y-auto pr-1">
+              <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:grid xl:grid-cols-2">
+                {(Object.keys(panelLabels) as Panel[]).map((item) => (
+                  <button
+                    className={clsx(
+                      "whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition",
+                      panel === item ? "bg-brand-600 text-white shadow-[0_16px_30px_-18px_rgba(79,101,115,0.95)]" : "border border-slate-200 bg-white/70 text-slate-700 hover:border-brand-300 hover:text-brand-700"
+                    )}
+                    key={item}
+                    onClick={() => setPanel(item)}
+                  >
+                    {panelLabels[item]}
+                  </button>
+                ))}
+              </nav>
+
+              <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                <Link className="secondary-button" to="/chatbot">
+                  Chatbot IA
+                </Link>
+                <div className="rounded-2xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">
+                  Panel actual: {panelLabels[panel]}
+                </div>
+              </div>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
               {renderSidebarContent()}
             </div>
           </aside>
 
-          <main className="flex min-h-0 flex-1 flex-col bg-white">
-            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : panel === "profile" ? renderProfileMain() : (
-              <div className="m-auto text-center text-slate-500">
-                <p className="text-xl font-medium">{panel === "contacts" ? "Gestiona tus contactos" : "Perfil de usuario"}</p>
-                <p className="text-base">{panel === "contacts" ? "Agrega por codigo, cambia alias y crea grupos." : "Personaliza tu cuenta y apariencia."}</p>
-              </div>
-            )}
+          <main className="surface-panel flex min-h-[70vh] flex-col overflow-hidden">
+            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : panel === "contacts" ? renderContactsWorkspace() : renderProfileWorkspace()}
 
             {(panel === "chats" || panel === "groups") ? (
-              <footer className="border-t border-slate-200 p-5">
-                <form className="flex flex-wrap items-center gap-3" onSubmit={(event) => {
+              <footer className="border-t border-white/70 bg-white/82 p-4 sm:p-5">
+                <form className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center" onSubmit={(event) => {
                   sendText(event).catch(() => {
                     setStatusText("No fue posible enviar el mensaje.");
                   });
                 }}>
                   <input
-                    className="min-w-[220px] flex-1 rounded-xl border border-slate-300 px-4 py-3 text-base"
+                    className="field-input flex-1 text-base lg:min-w-[220px]"
                     placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
                     value={messageInput}
                     onChange={(event) => {
@@ -1227,7 +1283,7 @@ export function AppPage( ) {
                       }
                     }}
                   />
-                  <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2.5 text-sm text-slate-600">
+                  <label className="secondary-button cursor-pointer">
                     Adjuntar
                     <input className="hidden" accept={ATTACHMENT_ACCEPT} type="file" onChange={(event) => {
                       sendAttachment(event).catch(() => {
@@ -1237,8 +1293,8 @@ export function AppPage( ) {
                   </label>
                   <button
                     className={clsx(
-                      "rounded-xl px-4 py-2.5 text-sm font-medium",
-                      isRecordingVoice ? "bg-rose-600 text-white" : "border border-slate-300 text-slate-700"
+                      "secondary-button",
+                      isRecordingVoice ? "border-rose-300 bg-rose-50 text-rose-700" : undefined
                     )}
                     type="button"
                     onClick={() => {
@@ -1250,7 +1306,7 @@ export function AppPage( ) {
                   >
                     {isRecordingVoice ? "Detener voz" : "Grabar voz"}
                   </button>
-                  <button className="rounded-xl bg-indigo-600 px-5 py-2.5 font-semibold text-white" type="submit">Enviar</button>
+                  <button className="primary-button lg:min-w-36" type="submit">Enviar</button>
                 </form>
               </footer>
             ) : null}
@@ -1258,7 +1314,8 @@ export function AppPage( ) {
         </div>
       </div>
 
-      {statusText ? <div className="mx-auto mt-3 w-full rounded-none bg-slate-900 px-4 py-3 text-sm text-white sm:mt-4 sm:rounded-xl">{statusText}</div> : null}
+      {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
+      {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
     </div>
   );
 }
