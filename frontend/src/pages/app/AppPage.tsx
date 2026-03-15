@@ -1656,217 +1656,168 @@ export function AppPage() {
   };
 
   const renderSidebarContent = () => {
-    if (panel === "chats" || panel === "groups") {
-      return (
-        <div className="flex min-h-0 flex-1 flex-col">
-          <div className="border-b border-[var(--surface-border)] px-5 py-5">
-            <div className="flex items-center justify-between gap-3">
-              <div>
-                <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">{inboxFilter === "groups" ? "Grupos" : "Chats"}</h2>
-              </div>
-              <div className="flex items-center gap-1">
-                {inboxFilter !== "chats" ? (
-                  <HeaderActionButton
-                    icon={<PlusIcon className="h-5 w-5" />}
-                    label="Nuevo grupo"
-                    onClick={() => setShowGroupCreator((prev) => !prev)}
-                  />
-                ) : null}
-                <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
-              </div>
+    return (
+      <div className="flex min-h-0 flex-1 flex-col">
+        <div className="border-b border-[var(--surface-border)] px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Bandeja</h2>
             </div>
-
-            <div className="mt-4 flex items-center gap-3 rounded-[10px] bg-[var(--search-bg)] px-4 py-2.5">
-              <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
-              <input
-                className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
-                onChange={(event) => setChatSearchQuery(event.target.value)}
-                placeholder="Buscar o iniciar un chat"
-                value={chatSearchQuery}
-              />
-            </div>
-
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <ChatFilterChip active={inboxFilter === "all"} label="Todos" onClick={() => {
-                setInboxFilter("all");
-                setShowGroupCreator(false);
-              }} />
-              <ChatFilterChip active={inboxFilter === "chats"} label="Chats" onClick={() => {
-                setInboxFilter("chats");
-                setPanel("chats");
-                setShowGroupCreator(false);
-              }} />
-              <ChatFilterChip active={inboxFilter === "groups"} label="Grupos" onClick={() => {
-                setInboxFilter("groups");
-                setPanel("groups");
-              }} />
+            <div className="flex items-center gap-1">
+              {inboxFilter !== "chats" ? (
+                <HeaderActionButton
+                  icon={<PlusIcon className="h-5 w-5" />}
+                  label="Nuevo grupo"
+                  onClick={() => setShowGroupCreator((prev) => !prev)}
+                />
+              ) : null}
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
-            {showGroupCreator && inboxFilter !== "chats" ? (
-              <form className="mx-3 mb-3 rounded-[20px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
-                createGroup(event).catch(() => {
-                  setStatusText("No fue posible crear el grupo.");
-                });
-              }}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
-                  <button
-                    className="text-xs font-medium text-[var(--app-subtle-text)] transition hover:text-[var(--app-text)]"
-                    onClick={() => setShowGroupCreator(false)}
-                    type="button"
-                  >
-                    Cerrar
-                  </button>
-                </div>
-                <input
-                  className="field-input mt-3"
-                  onChange={(event) => setNewGroupName(event.target.value)}
-                  placeholder="Nombre del grupo"
-                  value={newGroupName}
-                />
-                <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                  {contacts.length === 0 ? <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p> : null}
-                  {contacts.map((contact) => (
-                    <label className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5" key={contact.id}>
-                      <input
-                        checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
-                        onChange={() => toggleGroupMember(contact.contactUser.id)}
-                        type="checkbox"
-                      />
-                      <span>{contact.alias || contact.contactUser.publicAlias}</span>
-                    </label>
-                  ))}
-                </div>
-                <button className="primary-button mt-3 w-full" type="submit">
-                  Crear grupo
-                </button>
-              </form>
-            ) : null}
+          <div className="mt-4 flex items-center gap-3 rounded-[10px] bg-[var(--search-bg)] px-4 py-2.5">
+            <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
+            <input
+              className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
+              onChange={(event) => setChatSearchQuery(event.target.value)}
+              placeholder="Buscar chat o grupo"
+              value={chatSearchQuery}
+            />
+          </div>
 
-            {inboxThreads.length === 0 ? (
-              <div className="mx-3 mt-3 rounded-[22px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
-                {inboxFilter === "groups"
-                  ? "No hay grupos creados todavia."
-                  : inboxFilter === "chats"
-                    ? "No hay chats que coincidan con la busqueda."
-                    : "No hay conversaciones ni grupos que coincidan con la busqueda."}
-              </div>
-            ) : null}
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <ChatFilterChip active={inboxFilter === "all"} label="Todos" onClick={() => {
+              setInboxFilter("all");
+              setShowGroupCreator(false);
+            }} />
+            <ChatFilterChip active={inboxFilter === "chats"} label="Chats" onClick={() => {
+              setInboxFilter("chats");
+              setShowGroupCreator(false);
+            }} />
+            <ChatFilterChip active={inboxFilter === "groups"} label="Grupos" onClick={() => setInboxFilter("groups")} />
+          </div>
+        </div>
 
-            {inboxThreads.map((item) => {
-              const selected = item.kind === "chat"
-                ? panel === "chats" && selectedConversationId === item.id
-                : panel === "groups" && selectedGroupId === item.id;
-              const unreadCount = item.kind === "chat" ? item.unreadCount : 0;
-
-              return (
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
+          {showGroupCreator && inboxFilter !== "chats" ? (
+            <form className="mx-3 mb-3 rounded-[20px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
+              createGroup(event).catch(() => {
+                setStatusText("No fue posible crear el grupo.");
+              });
+            }}>
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
                 <button
-                  className={clsx(
-                    "flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition",
-                    selected
-                      ? "bg-[var(--chat-item-active)]"
-                      : "hover:bg-[var(--chat-item-hover)]"
-                  )}
-                  key={`${item.kind}:${item.id}`}
-                  onClick={() => {
-                    if (item.kind === "chat") {
-                      setPanel("chats");
-                      setSelectedConversationId(item.id);
-                    } else {
-                      setPanel("groups");
-                      setSelectedGroupId(item.id);
-                    }
-
-                    if (typeof window !== "undefined" && window.innerWidth < 1024) {
-                      setSidebarOpen(false);
-                    }
-                  }}
+                  className="text-xs font-medium text-[var(--app-subtle-text)] transition hover:text-[var(--app-text)]"
+                  onClick={() => setShowGroupCreator(false)}
                   type="button"
                 >
-                  <Avatar
-                    name={item.name}
-                    online={item.kind === "chat" ? item.online : undefined}
-                    src={item.kind === "chat" ? item.profileImageUrl : undefined}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{item.name}</p>
-                        {item.kind === "group" ? (
-                          <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
-                            Grupo
-                          </span>
-                        ) : null}
-                      </div>
-                      <span className={clsx("shrink-0 text-[11px]", unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]")}>
-                        {formatSidebarTime(item.previewDate)}
-                      </span>
-                    </div>
-                    <div className="mt-1 flex items-center justify-between gap-2">
-                      <p className={clsx("min-w-0 flex-1 truncate text-[13px]", unreadCount > 0 ? "text-[var(--app-text)]" : "text-[var(--app-subtle-text)]")}>
-                        {item.preview}
-                      </p>
-                      {unreadCount > 0 ? (
-                        <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 py-0.5 text-[10px] font-bold text-[#041b10]">
-                          {unreadCount}
-                        </span>
-                      ) : item.kind === "group" ? (
+                  Cerrar
+                </button>
+              </div>
+              <input
+                className="field-input mt-3"
+                onChange={(event) => setNewGroupName(event.target.value)}
+                placeholder="Nombre del grupo"
+                value={newGroupName}
+              />
+              <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
+                {contacts.length === 0 ? <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p> : null}
+                {contacts.map((contact) => (
+                  <label className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5" key={contact.id}>
+                    <input
+                      checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
+                      onChange={() => toggleGroupMember(contact.contactUser.id)}
+                      type="checkbox"
+                    />
+                    <span>{contact.alias || contact.contactUser.publicAlias}</span>
+                  </label>
+                ))}
+              </div>
+              <button className="primary-button mt-3 w-full" type="submit">
+                Crear grupo
+              </button>
+            </form>
+          ) : null}
+
+          {inboxThreads.length === 0 ? (
+            <div className="mx-3 mt-3 rounded-[22px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
+              {inboxFilter === "groups"
+                ? "No hay grupos creados todavia."
+                : inboxFilter === "chats"
+                  ? "No hay chats que coincidan con la busqueda."
+                  : "No hay conversaciones ni grupos que coincidan con la busqueda."}
+            </div>
+          ) : null}
+
+          {inboxThreads.map((item) => {
+            const selected = item.kind === "chat"
+              ? panel === "chats" && selectedConversationId === item.id
+              : panel === "groups" && selectedGroupId === item.id;
+            const unreadCount = item.kind === "chat" ? item.unreadCount : 0;
+
+            return (
+              <button
+                className={clsx(
+                  "flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition",
+                  selected
+                    ? "bg-[var(--chat-item-active)]"
+                    : "hover:bg-[var(--chat-item-hover)]"
+                )}
+                key={`${item.kind}:${item.id}`}
+                onClick={() => {
+                  if (item.kind === "chat") {
+                    setPanel("chats");
+                    setSelectedConversationId(item.id);
+                  } else {
+                    setPanel("groups");
+                    setSelectedGroupId(item.id);
+                  }
+
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
+                type="button"
+              >
+                <Avatar
+                  name={item.name}
+                  online={item.kind === "chat" ? item.online : undefined}
+                  src={item.kind === "chat" ? item.profileImageUrl : undefined}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{item.name}</p>
+                      {item.kind === "group" ? (
                         <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
-                          {item.memberCount}
+                          Grupo
                         </span>
                       ) : null}
                     </div>
+                    <span className={clsx("shrink-0 text-[11px]", unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]")}>
+                      {formatSidebarTime(item.previewDate)}
+                    </span>
                   </div>
-                </button>
-              );
-            })}
-          </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p className={clsx("min-w-0 flex-1 truncate text-[13px]", unreadCount > 0 ? "text-[var(--app-text)]" : "text-[var(--app-subtle-text)]")}>
+                      {item.preview}
+                    </p>
+                    {unreadCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 py-0.5 text-[10px] font-bold text-[#041b10]">
+                        {unreadCount}
+                      </span>
+                    ) : item.kind === "group" ? (
+                      <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
+                        {item.memberCount}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
         </div>
-      );
-    }
-
-    if (panel === "contacts") {
-      return (
-        <div className="space-y-4">
-          <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-4">
-            <p className="eyebrow-label">Resumen</p>
-            <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">Tus contactos</h3>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Total</p>
-                <p className="mt-1 text-xl font-bold text-[var(--app-text)]">{contacts.length}</p>
-              </div>
-              <div className="rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
-                <p className="text-xs uppercase text-[var(--app-subtle-text)]">En linea</p>
-                <p className="mt-1 text-xl font-bold text-emerald-600">{onlineContacts}</p>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[linear-gradient(135deg,rgba(95,120,136,0.12),rgba(79,101,115,0.06))] p-4 text-sm leading-6 text-[var(--app-subtle-text)]">
-            Usa alias locales para encontrar conversaciones mas rapido y mantener tu agenda organizada.
-          </article>
-        </div>
-      );
-    }
-
-    return (
-      <div className="space-y-4">
-        <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-4">
-          <p className="eyebrow-label">Vista rapida</p>
-          <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">{profile.publicAlias || user?.publicAlias}</h3>
-          <p className="mt-2 text-sm leading-6 text-[var(--app-subtle-text)]">{profile.bio || "Completa tu bio para dar contexto a otras personas."}</p>
-        </article>
-
-        <article className="rounded-[28px] border border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] p-4 text-sm">
-          <p className="text-xs uppercase text-[var(--app-subtle-text)]">Color de acento</p>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="h-5 w-5 rounded-full border border-[var(--muted-card-border)]" style={{ backgroundColor: profile.accentColor }} />
-            <span className="font-medium text-[var(--app-text)]">{profile.accentColor}</span>
-          </div>
-        </article>
       </div>
     );
   };
