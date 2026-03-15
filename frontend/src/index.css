@@ -4,29 +4,97 @@
 @tailwind components;
 @tailwind utilities;
 
-:root {
+:root,
+html[data-theme="light"] {
   font-family: "Manrope", "Trebuchet MS", sans-serif;
-  color: #0f172a;
-  background:
+  color-scheme: light;
+  --app-background:
     radial-gradient(circle at top left, rgba(250, 204, 21, 0.12), transparent 26%),
     radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 24%),
-    linear-gradient(145deg, #f6fbff 0%, #eef4f8 42%, #f8f3e8 100%);
-  color-scheme: light;
+    linear-gradient(145deg, #f7fbff 0%, #edf4f7 44%, #f6efe4 100%);
+  --app-text: #0f172a;
+  --app-subtle-text: #5b6776;
+  --surface-bg: rgba(255, 255, 255, 0.74);
+  --surface-bg-strong: rgba(255, 255, 255, 0.88);
+  --surface-border: rgba(255, 255, 255, 0.7);
+  --surface-border-strong: rgba(203, 213, 225, 0.85);
+  --surface-shadow: 0 26px 80px -34px rgba(15, 23, 42, 0.34);
+  --muted-card-bg: rgba(248, 250, 252, 0.88);
+  --muted-card-border: rgba(226, 232, 240, 0.94);
+  --input-bg: rgba(255, 255, 255, 0.9);
+  --input-border: rgba(203, 213, 225, 0.9);
+  --input-text: #0f172a;
+  --input-placeholder: #7c8796;
+  --focus-ring: rgba(175, 192, 202, 0.38);
+  --secondary-bg: rgba(255, 255, 255, 0.78);
+  --secondary-border: rgba(203, 213, 225, 0.82);
+  --secondary-text: #334155;
+  --eyebrow-text: rgba(64, 82, 96, 0.82);
+  --toast-bg: rgba(15, 23, 42, 0.94);
+  --toast-text: #ffffff;
+  --bubble-own-from: #4f6573;
+  --bubble-own-to: #27343d;
+  --bubble-own-text: #f8fafc;
+  --bubble-own-muted: rgba(226, 232, 240, 0.78);
+  --bubble-peer-bg: rgba(255, 255, 255, 0.9);
+  --bubble-peer-border: rgba(226, 232, 240, 0.94);
+  --bubble-peer-text: #0f172a;
+  --bubble-peer-muted: #64748b;
+}
+
+html[data-theme="dark"] {
+  color-scheme: dark;
+  --app-background:
+    radial-gradient(circle at 16% 18%, rgba(56, 189, 248, 0.14), transparent 24%),
+    radial-gradient(circle at 82% 10%, rgba(249, 115, 22, 0.15), transparent 24%),
+    linear-gradient(145deg, #020617 0%, #0f172a 42%, #111827 100%);
+  --app-text: #e2e8f0;
+  --app-subtle-text: #94a3b8;
+  --surface-bg: rgba(15, 23, 42, 0.74);
+  --surface-bg-strong: rgba(15, 23, 42, 0.9);
+  --surface-border: rgba(51, 65, 85, 0.8);
+  --surface-border-strong: rgba(71, 85, 105, 0.9);
+  --surface-shadow: 0 28px 80px -36px rgba(2, 6, 23, 0.8);
+  --muted-card-bg: rgba(15, 23, 42, 0.62);
+  --muted-card-border: rgba(51, 65, 85, 0.9);
+  --input-bg: rgba(15, 23, 42, 0.86);
+  --input-border: rgba(71, 85, 105, 0.92);
+  --input-text: #e2e8f0;
+  --input-placeholder: #94a3b8;
+  --focus-ring: rgba(95, 120, 136, 0.34);
+  --secondary-bg: rgba(15, 23, 42, 0.72);
+  --secondary-border: rgba(71, 85, 105, 0.86);
+  --secondary-text: #cbd5e1;
+  --eyebrow-text: rgba(203, 213, 225, 0.84);
+  --toast-bg: rgba(2, 6, 23, 0.92);
+  --toast-text: #f8fafc;
+  --bubble-own-from: #5f7888;
+  --bubble-own-to: #31404d;
+  --bubble-own-text: #f8fafc;
+  --bubble-own-muted: rgba(226, 232, 240, 0.78);
+  --bubble-peer-bg: rgba(15, 23, 42, 0.9);
+  --bubble-peer-border: rgba(51, 65, 85, 0.94);
+  --bubble-peer-text: #e2e8f0;
+  --bubble-peer-muted: #94a3b8;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  min-height: 100%;
 }
 
 html {
-  min-height: 100%;
-  background:
-    radial-gradient(circle at top left, rgba(250, 204, 21, 0.12), transparent 26%),
-    radial-gradient(circle at 85% 12%, rgba(14, 165, 233, 0.16), transparent 24%),
-    linear-gradient(145deg, #f6fbff 0%, #eef4f8 42%, #f8f3e8 100%);
+  background: var(--app-background);
 }
 
 body {
   margin: 0;
   min-height: 100vh;
-  background: transparent;
-  color: #0f172a;
+  background: var(--app-background);
+  color: var(--app-text);
+  transition: background 220ms ease, color 220ms ease;
 }
 
 * {
@@ -43,10 +111,6 @@ button,
 textarea,
 select {
   font: inherit;
-}
-
-#root {
-  min-height: 100vh;
 }
 
 ::selection {
@@ -71,14 +135,20 @@ select {
 
 @layer components {
   .surface-panel {
-    border-color: rgba(255, 255, 255, 0.6);
-    background-color: rgba(255, 255, 255, 0.78);
-    @apply rounded-[28px] border shadow-[0_22px_70px_-28px_rgba(15,23,42,0.34)] backdrop-blur-xl;
+    border-color: var(--surface-border);
+    background-color: var(--surface-bg);
+    color: var(--app-text);
+    box-shadow: var(--surface-shadow);
+    @apply rounded-[28px] border backdrop-blur-xl;
   }
 
   .field-input {
-    background-color: rgba(255, 255, 255, 0.85);
-    @apply w-full rounded-2xl border border-slate-200 px-4 py-3 text-sm text-slate-900 shadow-[inset_0_1px_0_rgba(255,255,255,0.7)] outline-none transition duration-200 placeholder:text-slate-400 focus:border-brand-300 focus:ring-4 focus:ring-brand-100;
+    background-color: var(--input-bg);
+    border-color: var(--input-border);
+    color: var(--input-text);
+    @apply w-full rounded-2xl border px-4 py-3 text-sm shadow-[inset_0_1px_0_rgba(255,255,255,0.08)] outline-none transition duration-200 placeholder:text-[var(--input-placeholder)] focus:border-brand-300 focus:ring-4;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.08);
+    --tw-ring-color: var(--focus-ring);
   }
 
   .field-textarea {
@@ -90,12 +160,14 @@ select {
   }
 
   .secondary-button {
-    background-color: rgba(255, 255, 255, 0.8);
-    @apply inline-flex items-center justify-center rounded-2xl border border-slate-200 px-4 py-3 text-sm font-semibold text-slate-700 transition hover:border-brand-300 hover:text-brand-700;
+    background-color: var(--secondary-bg);
+    border-color: var(--secondary-border);
+    color: var(--secondary-text);
+    @apply inline-flex items-center justify-center rounded-2xl border px-4 py-3 text-sm font-semibold transition hover:border-brand-300 hover:text-brand-700;
   }
 
   .eyebrow-label {
-    color: rgba(64, 82, 96, 0.8);
+    color: var(--eyebrow-text);
     @apply text-[11px] font-bold uppercase tracking-[0.24em];
   }
 
