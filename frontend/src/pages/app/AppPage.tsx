@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ChangeEvent, FormEvent, ReactNode, RefObject } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
@@ -65,20 +65,25 @@ interface ChatHeaderProps {
   aside?: ReactNode;
   avatar: ReactNode;
   eyebrow: string;
+  leadingAction?: ReactNode;
   statusRow?: ReactNode;
   subtitle: ReactNode;
   title: string;
 }
 
 interface MessageViewportProps {
+  bottomRef: RefObject<HTMLDivElement | null>;
   children: ReactNode;
+  contentRef: RefObject<HTMLDivElement | null>;
   emptyState: ReactNode;
+  onScroll: () => void;
+  scrollAction?: ReactNode;
   viewportRef: RefObject<HTMLDivElement | null>;
 }
 
 interface MessageBubbleProps {
   message: ChatRenderableMessage;
-  meta: string;
+  meta: ReactNode;
   own: boolean;
   renderContent: (message: ChatRenderableMessage) => ReactNode;
   senderLabel?: string;
@@ -152,6 +157,31 @@ function MoonIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
       <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function MenuIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="m7 10 5 5 5-5" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function StatusChecks({ className, status }: { className?: string; status: "Sent" | "Delivered" | "Seen" }) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 20 20">
+      <path d="m4.5 10.2 2.1 2.1 4.1-4.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+      {status !== "Sent" ? <path d="m9.2 10.2 2.1 2.1 4.1-4.8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" /> : null}
     </svg>
   );
 }
@@ -361,11 +391,12 @@ function SidebarNavButton({ active, badge, description, icon, label, onClick }: 
   );
 }
 
-function ChatHeader({ aside, avatar, eyebrow, statusRow, subtitle, title }: ChatHeaderProps) {
+function ChatHeader({ aside, avatar, eyebrow, leadingAction, statusRow, subtitle, title }: ChatHeaderProps) {
   return (
     <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
+          {leadingAction ? <div className="lg:hidden">{leadingAction}</div> : null}
           {avatar}
           <div className="min-w-0">
             <p className="eyebrow-label">{eyebrow}</p>
@@ -380,17 +411,39 @@ function ChatHeader({ aside, avatar, eyebrow, statusRow, subtitle, title }: Chat
   );
 }
 
-function MessageViewport({ children, emptyState, viewportRef }: MessageViewportProps) {
+function ScrollToBottomButton({ count, onClick }: { count: number; onClick: () => void }) {
+  return (
+    <button
+      className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[#25d366] px-4 py-2 text-sm font-semibold text-[#072a18] shadow-[0_16px_30px_-20px_rgba(7,42,24,0.55)] transition hover:bg-[#20bd5c]"
+      onClick={onClick}
+      type="button"
+    >
+      <ChevronDownIcon className="h-4 w-4" />
+      <span>{count > 1 ? `${count} nuevos mensajes` : "Nuevo mensaje"}</span>
+    </button>
+  );
+}
+
+function MessageViewport({ bottomRef, children, contentRef, emptyState, onScroll, scrollAction, viewportRef }: MessageViewportProps) {
   const hasContent = Array.isArray(children) ? children.length > 0 : Boolean(children);
 
   return (
-    <section
-      className="min-h-0 flex-1 overflow-y-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-4 py-5 sm:px-6"
-      ref={viewportRef}
-    >
-      <div className="flex min-h-full flex-col justify-end gap-3">
-        {hasContent ? children : emptyState}
+    <section className="relative min-h-0 flex-1">
+      <div
+        className="min-h-0 h-full overflow-y-auto bg-[linear-gradient(180deg,rgba(255,255,255,0.08),rgba(255,255,255,0.02))] px-4 py-5 sm:px-6"
+        onScroll={onScroll}
+        ref={viewportRef}
+      >
+        <div className="flex min-h-full flex-col justify-end gap-3" ref={contentRef}>
+          {hasContent ? children : emptyState}
+          <div ref={bottomRef} />
+        </div>
       </div>
+      {scrollAction ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+          {scrollAction}
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -411,7 +464,7 @@ function MessageBubble({ message, meta, own, renderContent, senderLabel }: Messa
       >
         {senderLabel ? <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-700">{senderLabel}</p> : null}
         {renderContent(message)}
-        <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-[var(--bubble-own-muted)]" : "text-[var(--bubble-peer-muted)]")}>{meta}</p>
+        <div className={clsx("mt-2 flex items-center gap-1 text-[10px] font-medium", own ? "justify-end text-[var(--bubble-own-muted)]" : "justify-start text-[var(--bubble-peer-muted)]")}>{meta}</div>
       </div>
     </article>
   );
@@ -493,12 +546,16 @@ export function AppPage() {
   const [groupMembers, setGroupMembers] = useState<GroupMemberDto[]>([]);
   const [typingByConversation, setTypingByConversation] = useState<Record<string, string>>({});
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
+  const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({});
   const [messageInput, setMessageInput] = useState("");
   const [connectionState, setConnectionState] = useState<HubConnectionState>(HubConnectionState.Disconnected);
   const [addingCode, setAddingCode] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [pendingNewMessageCount, setPendingNewMessageCount] = useState(0);
   const [profile, setProfile] = useState<ProfileForm>({
     bio: "",
     publicAlias: "",
@@ -512,7 +569,13 @@ export function AppPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
-  const messageViewportRef = useRef<HTMLDivElement | null>(null);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesContentRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const previousThreadKeyRef = useRef("");
+  const previousMessageCountRef = useRef(0);
+  const forceScrollRef = useRef(false);
+  const stickToBottomRef = useRef(true);
 
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
@@ -532,10 +595,35 @@ export function AppPage() {
   const messagingPanel = panel === "chats" || panel === "groups";
   const composerEnabled = panel === "groups" ? Boolean(currentGroup) : Boolean(currentConversation);
   const canSendMessage = messageInput.trim().length > 0;
+  const activeMessages = useMemo(
+    () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
+    [groupMessages, messages, panel]
+  );
+  const activeThreadKey = useMemo(
+    () => (panel === "groups" ? `group:${selectedGroupId ?? "none"}` : panel === "chats" ? `chat:${selectedConversationId ?? "none"}` : panel),
+    [panel, selectedConversationId, selectedGroupId]
+  );
 
   const applyThemeMode = (mode: ThemeMode): void => {
     setThemeMode(mode);
     setProfile((prev) => ({ ...prev, theme: toThemeNumber(mode) }));
+  };
+
+  const isNearBottom = (): boolean => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return true;
+    }
+
+    const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distance < 120;
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth"): void => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
   };
 
   useEffect(() => {
@@ -574,21 +662,98 @@ export function AppPage() {
   }, []);
 
   useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncSidebarState = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+
+    syncSidebarState();
+    window.addEventListener("resize", syncSidebarState);
+
+    return () => window.removeEventListener("resize", syncSidebarState);
+  }, []);
+
+  useEffect(() => {
     if (!messagingPanel) {
       return;
     }
 
-    const viewport = messageViewportRef.current;
-    if (!viewport) {
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, [messagingPanel, selectedConversationId, selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
       return;
     }
 
-    const frame = window.requestAnimationFrame(() => {
-      viewport.scrollTop = viewport.scrollHeight;
+    setUnreadByConversation((prev) => {
+      if (!(selectedConversationId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[selectedConversationId];
+      return next;
+    });
+  }, [selectedConversationId]);
+
+  useLayoutEffect(() => {
+    if (!messagingPanel) {
+      return;
+    }
+
+    const threadChanged = previousThreadKeyRef.current !== activeThreadKey;
+    const previousCount = threadChanged ? 0 : previousMessageCountRef.current;
+    const nextCount = activeMessages.length;
+    const addedMessages = Math.max(0, nextCount - previousCount);
+
+    if (forceScrollRef.current || threadChanged) {
+      scrollToBottom("auto");
+      forceScrollRef.current = false;
+    } else if (addedMessages > 0) {
+      if (stickToBottomRef.current || isNearBottom()) {
+        scrollToBottom("smooth");
+      } else {
+        setPendingNewMessageCount((prev) => prev + addedMessages);
+        setShowScrollToBottom(true);
+      }
+    }
+
+    previousThreadKeyRef.current = activeThreadKey;
+    previousMessageCountRef.current = nextCount;
+  }, [activeMessages.length, activeThreadKey, messagingPanel]);
+
+  useEffect(() => {
+    if (!messagingPanel || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const content = messagesContentRef.current;
+    if (!content) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        scrollToBottom("auto");
+      }
     });
 
-    return () => window.cancelAnimationFrame(frame);
-  }, [messagingPanel, selectedConversationId, selectedGroupId, messages.length, groupMessages.length]);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeThreadKey, messagingPanel]);
 
   const loadSidebar = async (): Promise<void> => {
     const [chatsResponse, contactsResponse] = await Promise.all([
@@ -709,6 +874,20 @@ export function AppPage() {
     connectionRef.current = connection;
 
     connection.on("message:new", (payload: { conversationId: string; message: MessageDto }) => {
+      const isActiveConversation = selectedConversationRef.current === payload.conversationId;
+      const shouldFollow = isActiveConversation ? isNearBottom() : false;
+
+      if (!isActiveConversation && payload.message.senderId !== user.id) {
+        setUnreadByConversation((prev) => ({
+          ...prev,
+          [payload.conversationId]: (prev[payload.conversationId] ?? 0) + 1
+        }));
+      }
+
+      if (isActiveConversation) {
+        stickToBottomRef.current = shouldFollow;
+      }
+
       setConversations((prev) => {
         const existing = prev.find((item) => item.id === payload.conversationId);
         if (!existing) {
@@ -865,6 +1044,8 @@ export function AppPage() {
     }
 
     const text = messageInput.trim();
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setMessageInput("");
 
     if (panel === "groups") {
@@ -952,6 +1133,8 @@ export function AppPage() {
     }
 
     try {
+      forceScrollRef.current = true;
+      stickToBottomRef.current = true;
       const uploaded = await uploadAttachment(file);
       await sendUploadedAttachment(uploaded);
       setStatusText("Adjunto enviado.");
@@ -1036,6 +1219,8 @@ export function AppPage() {
 
     recorder.start(250);
     mediaRecorderRef.current = recorder;
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setIsRecordingVoice(true);
     setStatusText("Grabando nota de voz...");
   };
@@ -1164,6 +1349,40 @@ export function AppPage() {
     return <p className="max-w-[60ch] whitespace-pre-wrap break-words leading-7 [overflow-wrap:anywhere]">{message.text ?? ""}</p>;
   };
 
+  const handleMessagesScroll = (): void => {
+    const nearBottom = isNearBottom();
+    stickToBottomRef.current = nearBottom;
+
+    if (nearBottom) {
+      setShowScrollToBottom(false);
+      setPendingNewMessageCount(0);
+    }
+  };
+
+  const renderOwnMessageMeta = (message: MessageDto) => (
+    <>
+      <span>{formatMessageTime(message.createdAt)}</span>
+      <StatusChecks
+        className={clsx(
+          "h-3.5 w-3.5",
+          message.status === "Seen" ? "text-sky-300" : "text-[var(--bubble-own-muted)]"
+        )}
+        status={message.status}
+      />
+    </>
+  );
+
+  const mobileSidebarToggle = (
+    <button
+      aria-label="Abrir conversaciones"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] text-[var(--app-text)] shadow-sm transition hover:border-brand-300 lg:hidden"
+      onClick={() => setSidebarOpen(true)}
+      type="button"
+    >
+      <MenuIcon className="h-5 w-5" />
+    </button>
+  );
+
   const renderChatMain = () => {
     if (!currentConversation) {
       return (
@@ -1190,6 +1409,7 @@ export function AppPage() {
           ) : undefined}
           avatar={<Avatar name={contactName} online={online} size="lg" src={currentConversation.contact.profileImageUrl} />}
           eyebrow="Chat privado"
+          leadingAction={mobileSidebarToggle}
           statusRow={(
             <>
               <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", online ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
@@ -1205,6 +1425,8 @@ export function AppPage() {
         />
 
         <MessageViewport
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
           emptyState={(
             <EmptyMessagingState
               description="Todavia no hay mensajes en esta conversacion."
@@ -1212,13 +1434,15 @@ export function AppPage() {
               title="Empieza el chat"
             />
           )}
-          viewportRef={messageViewportRef}
+          onScroll={handleMessagesScroll}
+          scrollAction={showScrollToBottom ? <ScrollToBottomButton count={pendingNewMessageCount} onClick={() => scrollToBottom("smooth")} /> : null}
+          viewportRef={messagesContainerRef}
         >
           {messages.map((message) => (
             <MessageBubble
               key={message.id}
               message={message}
-              meta={`${formatMessageTime(message.createdAt)}${message.senderId === user?.id ? ` · ${message.status}` : ""}`}
+              meta={message.senderId === user?.id ? renderOwnMessageMeta(message) : <span>{formatMessageTime(message.createdAt)}</span>}
               own={message.senderId === user?.id}
               renderContent={renderMessageContent}
             />
@@ -1251,12 +1475,15 @@ export function AppPage() {
           ))}
           avatar={<Avatar name={currentGroup.name} size="lg" />}
           eyebrow="Grupo activo"
+          leadingAction={mobileSidebarToggle}
           statusRow={<span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">{groupMembers.length} miembros</span>}
           subtitle={<p className="truncate">Conversacion grupal compartida</p>}
           title={currentGroup.name}
         />
 
         <MessageViewport
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
           emptyState={(
             <EmptyMessagingState
               description="Aun no hay mensajes en este grupo."
@@ -1264,13 +1491,15 @@ export function AppPage() {
               title="Todo listo para empezar"
             />
           )}
-          viewportRef={messageViewportRef}
+          onScroll={handleMessagesScroll}
+          scrollAction={showScrollToBottom ? <ScrollToBottomButton count={pendingNewMessageCount} onClick={() => scrollToBottom("smooth")} /> : null}
+          viewportRef={messagesContainerRef}
         >
           {groupMessages.map((message) => (
             <MessageBubble
               key={message.id}
               message={message}
-              meta={formatMessageTime(message.createdAt)}
+              meta={<span>{formatMessageTime(message.createdAt)}</span>}
               own={message.senderId === user?.id}
               renderContent={renderMessageContent}
               senderLabel={message.senderId === user?.id ? undefined : message.senderAlias}
@@ -1309,17 +1538,23 @@ export function AppPage() {
             const selected = selectedConversationId === conversation.id;
             const contactName = conversation.contact.alias || conversation.contact.publicAlias;
             const previewDate = conversation.lastMessageAt ?? conversation.createdAt;
+            const unreadCount = unreadByConversation[conversation.id] ?? 0;
 
             return (
               <button
                 className={clsx(
-                  "w-full rounded-[26px] border p-3 text-left transition",
+                  "w-full rounded-[26px] border p-3 text-left transition duration-200",
                   selected
-                    ? "border-transparent bg-[linear-gradient(135deg,#4f6573,#27343d)] text-white shadow-[0_24px_48px_-30px_rgba(15,23,42,0.7)]"
-                    : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
+                    ? "border-transparent bg-[linear-gradient(135deg,#174d3a,#1f6d52)] text-white shadow-[0_24px_48px_-30px_rgba(7,42,24,0.55)]"
+                    : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] hover:border-[#25d366]/60 hover:bg-[var(--muted-card-bg)]"
                 )}
                 key={conversation.id}
-                onClick={() => setSelectedConversationId(conversation.id)}
+                onClick={() => {
+                  setSelectedConversationId(conversation.id);
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
                 type="button"
               >
                 <div className="flex items-start gap-3">
@@ -1331,13 +1566,20 @@ export function AppPage() {
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-2">
                       <p className={clsx("truncate text-sm font-semibold", selected ? "text-white" : "text-[var(--app-text)]")}>{contactName}</p>
-                      <span className={clsx("shrink-0 text-[11px]", selected ? "text-white/72" : "text-[var(--app-subtle-text)]")}>
+                      <span className={clsx("shrink-0 text-[11px]", selected ? "text-white/72" : unreadCount > 0 ? "text-[#128c4a]" : "text-[var(--app-subtle-text)]")}>
                         {formatSidebarTime(previewDate)}
                       </span>
                     </div>
-                    <p className={clsx("mt-1 truncate text-xs", selected ? "text-white/72" : "text-[var(--app-subtle-text)]")}>
-                      {getMessagePreview(conversation.lastMessage)}
-                    </p>
+                    <div className="mt-1 flex items-center justify-between gap-2">
+                      <p className={clsx("min-w-0 flex-1 truncate text-xs", selected ? "text-white/72" : unreadCount > 0 ? "font-medium text-[var(--app-text)]" : "text-[var(--app-subtle-text)]")}>
+                        {getMessagePreview(conversation.lastMessage)}
+                      </p>
+                      {unreadCount > 0 ? (
+                        <span className={clsx("inline-flex min-w-5 items-center justify-center rounded-full px-1.5 py-0.5 text-[10px] font-bold", selected ? "bg-white text-[#128c4a]" : "bg-[#25d366] text-[#072a18]")}>
+                          {unreadCount}
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                 </div>
               </button>
@@ -1398,7 +1640,12 @@ export function AppPage() {
                     : "border-[var(--surface-border-strong)] bg-[var(--surface-bg-strong)] hover:border-brand-300 hover:bg-[var(--muted-card-bg)]"
                 )}
                 key={group.id}
-                onClick={() => setSelectedGroupId(group.id)}
+                onClick={() => {
+                  setSelectedGroupId(group.id);
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
                 type="button"
               >
                 <div className="flex items-start gap-3">
@@ -1637,8 +1884,14 @@ export function AppPage() {
 
   return (
     <div className="relative h-screen overflow-hidden px-3 py-3 text-[var(--app-text)] sm:px-4 sm:py-4">
-      <div className="grid h-full min-h-0 gap-3 grid-rows-[minmax(18rem,42vh)_minmax(0,1fr)] lg:grid-cols-[340px_minmax(0,1fr)] lg:grid-rows-1">
-        <aside className="surface-panel flex min-h-0 flex-col overflow-hidden">
+      {sidebarOpen ? <button aria-label="Cerrar menu" className="absolute inset-0 z-20 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} type="button" /> : null}
+      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[340px_minmax(0,1fr)] lg:gap-3">
+        <aside
+          className={clsx(
+            "surface-panel absolute inset-y-0 left-0 z-30 flex min-h-0 w-[88vw] max-w-[360px] flex-col overflow-hidden transition-transform duration-300 lg:static lg:w-auto",
+            sidebarOpen ? "translate-x-0" : "-translate-x-[105%] lg:translate-x-0"
+          )}
+        >
           <div className="shrink-0 border-b border-[var(--surface-border)] p-4 sm:p-5">
             <div className="rounded-[32px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-4 text-white shadow-[0_22px_60px_-32px_rgba(15,23,42,0.8)]">
               <div className="flex items-start justify-between gap-3">
@@ -1676,7 +1929,12 @@ export function AppPage() {
                 description={panelDescriptions.chats}
                 icon={<ChatIcon className="h-5 w-5" />}
                 label={panelLabels.chats}
-                onClick={() => setPanel("chats")}
+                onClick={() => {
+                  setPanel("chats");
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
               />
               <SidebarNavButton
                 active={panel === "groups"}
@@ -1684,7 +1942,12 @@ export function AppPage() {
                 description={panelDescriptions.groups}
                 icon={<GroupIcon className="h-5 w-5" />}
                 label={panelLabels.groups}
-                onClick={() => setPanel("groups")}
+                onClick={() => {
+                  setPanel("groups");
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
               />
               <SidebarNavButton
                 active={panel === "contacts"}
@@ -1692,14 +1955,24 @@ export function AppPage() {
                 description={panelDescriptions.contacts}
                 icon={<ContactIcon className="h-5 w-5" />}
                 label={panelLabels.contacts}
-                onClick={() => setPanel("contacts")}
+                onClick={() => {
+                  setPanel("contacts");
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
               />
               <SidebarNavButton
                 active={panel === "profile"}
                 description={panelDescriptions.profile}
                 icon={<ProfileIcon className="h-5 w-5" />}
                 label={panelLabels.profile}
-                onClick={() => setPanel("profile")}
+                onClick={() => {
+                  setPanel("profile");
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
               />
 
               <Link
@@ -1728,7 +2001,12 @@ export function AppPage() {
           </div>
         </aside>
 
-        <main className="surface-panel flex min-h-0 flex-col overflow-hidden">
+        <main className="surface-panel relative flex h-full min-h-0 flex-col overflow-hidden lg:ml-0">
+          {panel !== "chats" && panel !== "groups" ? (
+            <div className="absolute left-4 top-4 z-10 lg:hidden">
+              {mobileSidebarToggle}
+            </div>
+          ) : null}
           {panel === "groups"
             ? renderGroupMain()
             : panel === "chats"
