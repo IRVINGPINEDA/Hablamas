@@ -98,7 +98,7 @@ public sealed class ChatHub : Hub
             return;
         }
 
-        await SendMessageInternal(conversationId, clientMessageId, MessageType.Text, text.Trim(), null);
+        await SendMessageInternal(conversationId, clientMessageId, MessageType.Text, text.Trim(), null, null, null, null, null);
     }
 
     public async Task SendImage(Guid conversationId, string clientMessageId, string imageUrl)
@@ -108,7 +108,44 @@ public sealed class ChatHub : Hub
             return;
         }
 
-        await SendMessageInternal(conversationId, clientMessageId, MessageType.Image, null, imageUrl.Trim());
+        var normalizedUrl = imageUrl.Trim();
+        await SendMessageInternal(conversationId, clientMessageId, MessageType.Image, null, normalizedUrl, normalizedUrl, null, null, null);
+    }
+
+    public async Task SendAttachment(
+        Guid conversationId,
+        string clientMessageId,
+        string type,
+        string attachmentUrl,
+        string? attachmentName,
+        string? attachmentContentType,
+        long? attachmentSizeBytes)
+    {
+        if (string.IsNullOrWhiteSpace(type) || string.IsNullOrWhiteSpace(attachmentUrl))
+        {
+            return;
+        }
+
+        var messageType = type.Trim().ToLowerInvariant() switch
+        {
+            "image" => MessageType.Image,
+            "video" => MessageType.Video,
+            "file" => MessageType.File,
+            "audio" => MessageType.Audio,
+            _ => throw new HubException("Unsupported attachment type")
+        };
+
+        var normalizedUrl = attachmentUrl.Trim();
+        await SendMessageInternal(
+            conversationId,
+            clientMessageId,
+            messageType,
+            null,
+            messageType == MessageType.Image ? normalizedUrl : null,
+            normalizedUrl,
+            string.IsNullOrWhiteSpace(attachmentName) ? null : attachmentName.Trim(),
+            string.IsNullOrWhiteSpace(attachmentContentType) ? null : attachmentContentType.Trim(),
+            attachmentSizeBytes);
     }
 
     public async Task SendTyping(Guid conversationId, bool isTyping)
@@ -185,7 +222,16 @@ public sealed class ChatHub : Hub
         return conversation;
     }
 
-    private async Task SendMessageInternal(Guid conversationId, string? clientMessageId, MessageType type, string? text, string? imageUrl)
+    private async Task SendMessageInternal(
+        Guid conversationId,
+        string? clientMessageId,
+        MessageType type,
+        string? text,
+        string? imageUrl,
+        string? attachmentUrl,
+        string? attachmentName,
+        string? attachmentContentType,
+        long? attachmentSizeBytes)
     {
         var senderId = Context.User!.GetRequiredUserId();
         var conversation = await GetAuthorizedConversation(conversationId, senderId);
@@ -200,6 +246,10 @@ public sealed class ChatHub : Hub
             Type = type,
             Text = text,
             ImageUrl = imageUrl,
+            AttachmentUrl = type == MessageType.Text ? null : attachmentUrl,
+            AttachmentName = type == MessageType.Text ? null : attachmentName,
+            AttachmentContentType = type == MessageType.Text ? null : attachmentContentType,
+            AttachmentSizeBytes = type == MessageType.Text ? null : attachmentSizeBytes,
             CreatedAt = DateTimeOffset.UtcNow,
             ClientMessageId = string.IsNullOrWhiteSpace(clientMessageId) ? null : clientMessageId
         };
@@ -230,6 +280,10 @@ public sealed class ChatHub : Hub
                 message.Text,
                 type = message.Type.ToString().ToLowerInvariant(),
                 message.ImageUrl,
+                message.AttachmentUrl,
+                message.AttachmentName,
+                message.AttachmentContentType,
+                message.AttachmentSizeBytes,
                 message.CreatedAt,
                 message.ClientMessageId
             }

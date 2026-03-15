@@ -22,7 +22,10 @@ public static class ServiceCollectionExtensions
         services.Configure<SmtpOptions>(configuration.GetSection(SmtpOptions.SectionName));
         services.Configure<UploadOptions>(configuration.GetSection(UploadOptions.SectionName));
         services.Configure<AdminOptions>(configuration.GetSection(AdminOptions.SectionName));
+        services.Configure<AiOptions>(configuration.GetSection(AiOptions.SectionName));
         services.Configure<GroqOptions>(configuration.GetSection(GroqOptions.SectionName));
+        services.Configure<OpenAiOptions>(configuration.GetSection(OpenAiOptions.SectionName));
+        services.Configure<AnthropicOptions>(configuration.GetSection(AnthropicOptions.SectionName));
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));

@@ -10,6 +10,10 @@ public class Message
     public string? Text { get; set; }
     public MessageType Type { get; set; } = MessageType.Text;
     public string? ImageUrl { get; set; }
+    public string? AttachmentUrl { get; set; }
+    public string? AttachmentName { get; set; }
+    public string? AttachmentContentType { get; set; }
+    public long? AttachmentSizeBytes { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public string? ClientMessageId { get; set; }
 

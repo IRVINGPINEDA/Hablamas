@@ -6,6 +6,8 @@ import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
 import { createChatConnection } from "../../lib/signalr";
 import type {
+  ChatAttachmentDto,
+  ChatMessageType,
   ContactDto,
   ConversationSummary,
   GroupChatSummary,
@@ -21,7 +23,18 @@ interface ProfileForm {
   accentColor: string;
 }
 
+interface UploadedAttachment {
+  url: string;
+  messageType: Exclude<ChatMessageType, "text">;
+  attachmentName?: string;
+  attachmentContentType?: string;
+  attachmentSizeBytes?: number;
+}
+
+type ChatRenderableMessage = Pick<MessageDto, "id" | "type" | "text" | "imageUrl" | "attachmentUrl" | "attachmentName" | "attachmentContentType" | "attachmentSizeBytes" | "createdAt">;
+
 type Panel = "chats" | "groups" | "contacts" | "profile";
+
 
 const panelLabels: Record<Panel, string> = {
   chats: "Chats",
@@ -29,6 +42,101 @@ const panelLabels: Record<Panel, string> = {
   contacts: "Contactos",
   profile: "Perfil"
 };
+
+const MESSAGE_WRAP_LENGTH = 50;
+const ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
+
+function getInitials(name: string): string {
+  return name
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part[0]?.toUpperCase() ?? "")
+    .join("");
+}
+
+function wrapMessageText(text?: string): string {
+  if (!text) {
+    return "";
+  }
+
+  return text
+    .split("\n")
+    .map((line) => {
+      if (line.length <= MESSAGE_WRAP_LENGTH) {
+        return line;
+      }
+
+      const chunks: string[] = [];
+      for (let index = 0; index < line.length; index += MESSAGE_WRAP_LENGTH) {
+        chunks.push(line.slice(index, index + MESSAGE_WRAP_LENGTH));
+      }
+
+      return chunks.join("\n");
+    })
+    .join("\n");
+}
+
+function formatBytes(bytes?: number): string {
+  if (!bytes || bytes <= 0) {
+    return "";
+  }
+
+  const units = ["B", "KB", "MB", "GB"];
+  let value = bytes;
+  let unitIndex = 0;
+
+  while (value >= 1024 && unitIndex < units.length - 1) {
+    value /= 1024;
+    unitIndex += 1;
+  }
+
+  return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
+}
+
+function getVoiceExtension(contentType: string): string {
+  if (contentType.includes("ogg")) {
+    return ".ogg";
+  }
+
+  if (contentType.includes("mp4")) {
+    return ".m4a";
+  }
+
+  if (contentType.includes("wav")) {
+    return ".wav";
+  }
+
+  return ".webm";
+}
+
+function getAttachmentUrl(message: ChatAttachmentDto): string | undefined {
+  return message.attachmentUrl || message.imageUrl;
+}
+
+function getMessagePreview(message?: { type: ChatMessageType; text?: string; attachmentName?: string }): string {
+  if (!message) {
+    return "Sin mensajes";
+  }
+
+  if (message.type === "text") {
+    return message.text || "Sin mensajes";
+  }
+
+  if (message.type === "image") {
+    return "[imagen]";
+  }
+
+  if (message.type === "video") {
+    return "[video]";
+  }
+
+  if (message.type === "audio") {
+    return "[nota de voz]";
+  }
+
+  return message.attachmentName ? `[archivo] ${message.attachmentName}` : "[archivo]";
+}
 
 export function AppPage( ) {
   const { user, logout, refreshProfile } = useAuth();
@@ -48,6 +156,7 @@ export function AppPage( ) {
   const [addingCode, setAddingCode] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
+  const [isRecordingVoice, setIsRecordingVoice] = useState(false);
   const [profile, setProfile] = useState<ProfileForm>({
     bio: "",
     publicAlias: "",
@@ -58,6 +167,9 @@ export function AppPage( ) {
   const selectedConversationRef = useRef<string | null>(null);
   const connectionRef = useRef<HubConnection | null>(null);
   const contactsRef = useRef<ContactDto[]>([]);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const mediaStreamRef = useRef<MediaStream | null>(null);
+  const voiceChunksRef = useRef<Blob[]>([]);
 
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
@@ -81,6 +193,11 @@ export function AppPage( ) {
   useEffect(() => {
     contactsRef.current = contacts;
   }, [contacts]);
+
+  useEffect(() => () => {
+    mediaRecorderRef.current?.stop();
+    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  }, []);
 
   const loadSidebar = async (): Promise<void> => {
     const [chatsResponse, contactsResponse] = await Promise.all([
@@ -214,6 +331,10 @@ export function AppPage( ) {
                   text: payload.message.text,
                   type: payload.message.type,
                   imageUrl: payload.message.imageUrl,
+                  attachmentUrl: payload.message.attachmentUrl,
+                  attachmentName: payload.message.attachmentName,
+                  attachmentContentType: payload.message.attachmentContentType,
+                  attachmentSizeBytes: payload.message.attachmentSizeBytes,
                   senderId: payload.message.senderId,
                   createdAt: payload.message.createdAt
                 }
@@ -376,20 +497,21 @@ export function AppPage( ) {
     await connection.invoke("SendTyping", selectedConversationId, isTyping);
   };
 
-  const sendImage = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
-    const file = event.target.files?.[0];
-    if (!file) {
-      return;
-    }
-
+  const uploadAttachment = async (file: File): Promise<UploadedAttachment> => {
     const formData = new FormData();
     formData.append("file", file);
 
-    const uploadResponse = await authApi.post("/uploads/message-image", formData, {
+    const response = await authApi.post("/uploads/message-attachment", formData, {
       headers: {
         "Content-Type": "multipart/form-data"
       }
     });
+
+    return response.data as UploadedAttachment;
+  };
+
+  const sendUploadedAttachment = async (attachment: UploadedAttachment): Promise<void> => {
+    const clientMessageId = crypto.randomUUID();
 
     if (panel === "groups") {
       if (!selectedGroupId) {
@@ -397,10 +519,15 @@ export function AppPage( ) {
       }
 
       await authApi.post(`/group-chats/${selectedGroupId}/messages`, {
-        type: "image",
-        imageUrl: uploadResponse.data.url,
-        clientMessageId: crypto.randomUUID()
+        type: attachment.messageType,
+        imageUrl: attachment.messageType === "image" ? attachment.url : undefined,
+        attachmentUrl: attachment.url,
+        attachmentName: attachment.attachmentName,
+        attachmentContentType: attachment.attachmentContentType,
+        attachmentSizeBytes: attachment.attachmentSizeBytes,
+        clientMessageId
       });
+
       await Promise.all([loadGroupMessages(selectedGroupId), loadGroups()]);
       return;
     }
@@ -415,7 +542,111 @@ export function AppPage( ) {
       return;
     }
 
-    await connection.invoke("SendImage", selectedConversationId, crypto.randomUUID(), uploadResponse.data.url);
+    await connection.invoke(
+      "SendAttachment",
+      selectedConversationId,
+      clientMessageId,
+      attachment.messageType,
+      attachment.url,
+      attachment.attachmentName ?? null,
+      attachment.attachmentContentType ?? null,
+      attachment.attachmentSizeBytes ?? null
+    );
+  };
+
+  const sendAttachment = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+    const file = event.target.files?.[0];
+    if (!file) {
+      return;
+    }
+
+    try {
+      const uploaded = await uploadAttachment(file);
+      await sendUploadedAttachment(uploaded);
+      setStatusText("Adjunto enviado.");
+    } finally {
+      event.target.value = "";
+    }
+  };
+
+  const toggleVoiceRecording = async (): Promise<void> => {
+    if (isRecordingVoice) {
+      const recorder = mediaRecorderRef.current;
+      if (recorder && recorder.state !== "inactive") {
+        setStatusText("Procesando nota de voz...");
+        recorder.stop();
+      }
+      return;
+    }
+
+    if (typeof window === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setStatusText("Tu navegador no soporta notas de voz.");
+      return;
+    }
+
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    mediaStreamRef.current = stream;
+    voiceChunksRef.current = [];
+
+    const supportedMimeType = [
+      "audio/webm;codecs=opus",
+      "audio/webm",
+      "audio/ogg;codecs=opus",
+      "audio/mp4"
+    ].find((type) => MediaRecorder.isTypeSupported(type));
+
+    const recorder = supportedMimeType
+      ? new MediaRecorder(stream, { mimeType: supportedMimeType })
+      : new MediaRecorder(stream);
+
+    recorder.ondataavailable = (event) => {
+      if (event.data.size > 0) {
+        voiceChunksRef.current.push(event.data);
+      }
+    };
+
+    recorder.onerror = () => {
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      mediaRecorderRef.current = null;
+      voiceChunksRef.current = [];
+      setIsRecordingVoice(false);
+      setStatusText("No fue posible grabar la nota de voz.");
+    };
+
+    recorder.onstop = () => {
+      const contentType = recorder.mimeType || "audio/webm";
+      const blob = new Blob(voiceChunksRef.current, { type: contentType });
+
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+      mediaStreamRef.current = null;
+      mediaRecorderRef.current = null;
+      voiceChunksRef.current = [];
+      setIsRecordingVoice(false);
+
+      if (blob.size === 0) {
+        setStatusText("No se capturo audio.");
+        return;
+      }
+
+      const voiceFile = new File(
+        [blob],
+        `nota-de-voz-${Date.now()}${getVoiceExtension(contentType)}`,
+        { type: contentType }
+      );
+
+      uploadAttachment(voiceFile)
+        .then(sendUploadedAttachment)
+        .then(() => setStatusText("Nota de voz enviada."))
+        .catch(() => {
+          setStatusText("No fue posible enviar la nota de voz.");
+        });
+    };
+
+    recorder.start(250);
+    mediaRecorderRef.current = recorder;
+    setIsRecordingVoice(true);
+    setStatusText("Grabando nota de voz...");
   };
 
   const addContactByCode = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
@@ -490,6 +721,58 @@ export function AppPage( ) {
     setStatusText("Foto de perfil actualizada.");
   };
 
+  const renderMessageContent = (message: ChatRenderableMessage) => {
+    const attachmentUrl = getAttachmentUrl(message);
+
+    if (message.type === "image" && attachmentUrl) {
+      return (
+        <a href={attachmentUrl} target="_blank" rel="noreferrer" className="block">
+          <img alt={message.attachmentName || "Imagen"} className="h-auto max-h-64 w-auto max-w-[220px] rounded-xl object-cover sm:max-w-[320px]" src={attachmentUrl} />
+        </a>
+      );
+    }
+
+    if (message.type === "video" && attachmentUrl) {
+      return (
+        <video
+          controls
+          className="h-auto max-h-72 w-auto max-w-[240px] rounded-xl bg-black sm:max-w-[360px]"
+          preload="metadata"
+          src={attachmentUrl}
+        />
+      );
+    }
+
+    if (message.type === "audio" && attachmentUrl) {
+      return (
+        <div className="min-w-[220px] max-w-[320px] space-y-2">
+          <p className="text-xs font-medium">{message.attachmentName || "Nota de voz"}</p>
+          <audio controls className="w-full" preload="metadata" src={attachmentUrl} />
+          {message.attachmentSizeBytes ? <p className="text-[11px] opacity-80">{formatBytes(message.attachmentSizeBytes)}</p> : null}
+        </div>
+      );
+    }
+
+    if (message.type === "file" && attachmentUrl) {
+      return (
+        <a
+          href={attachmentUrl}
+          target="_blank"
+          rel="noreferrer"
+          className="block min-w-[220px] max-w-[320px] rounded-xl border border-current/15 bg-black/5 px-4 py-3 no-underline"
+        >
+          <p className="text-xs uppercase tracking-wide opacity-70">Archivo</p>
+          <p className="mt-1 break-words font-medium">{message.attachmentName || "Descargar archivo"}</p>
+          <p className="mt-1 text-[11px] opacity-80">
+            {[message.attachmentContentType, formatBytes(message.attachmentSizeBytes)].filter(Boolean).join(" | ")}
+          </p>
+        </a>
+      );
+    }
+
+    return <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>;
+  };
+
   const renderChatMain = () => {
     if (!currentConversation) {
       return (
@@ -505,16 +788,38 @@ export function AppPage( ) {
       <>
         <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="eyebrow-label">Chat privado</p>
-              <h2 className="mt-2 text-xl font-bold text-slate-950">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
-              <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span className={clsx("rounded-full px-2.5 py-1 font-semibold", presenceByUser[currentConversation.contact.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
-                  {presenceByUser[currentConversation.contact.id] ? "En linea" : "Desconectado"}
-                </span>
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
-                  SignalR: {HubConnectionState[connectionState]}
-                </span>
+            <div className="flex items-center gap-3">
+              <div className="relative">
+                {currentConversation.contact.profileImageUrl ? (
+                  <img
+                    alt={currentConversation.contact.alias || currentConversation.contact.publicAlias}
+                    className="h-14 w-14 rounded-full object-cover ring-2 ring-white"
+                    src={currentConversation.contact.profileImageUrl}
+                  />
+                ) : (
+                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 ring-2 ring-white">
+                    {getInitials(currentConversation.contact.alias || currentConversation.contact.publicAlias)}
+                  </div>
+                )}
+                <span
+                  className={clsx(
+                    "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white",
+                    presenceByUser[currentConversation.contact.id] ? "bg-emerald-500" : "bg-slate-300"
+                  )}
+                />
+              </div>
+
+              <div>
+                <p className="eyebrow-label">Chat privado</p>
+                <h2 className="mt-2 text-xl font-bold text-slate-950">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
+                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                  <span className={clsx("rounded-full px-2.5 py-1 font-semibold", presenceByUser[currentConversation.contact.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+                    {presenceByUser[currentConversation.contact.id] ? "En linea" : "Desconectado"}
+                  </span>
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
+                    SignalR: {HubConnectionState[connectionState]}
+                  </span>
+                </div>
               </div>
             </div>
             {typingByConversation[currentConversation.id] ? (
@@ -528,27 +833,17 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
           {messages.map((message) => {
             const own = message.senderId === user?.id;
-            const isImage = message.type === "image";
+            const isAttachmentMessage = message.type !== "text";
             return (
               <div
                 key={message.id}
                 className={clsx(
                   "max-w-[88%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[78%]",
                   own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
-                  isImage ? "p-2.5" : "break-words px-4 py-3.5"
+                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
                 )}
               >
-                {isImage ? (
-                  <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img
-                      alt="Mensaje"
-                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
-                      src={message.imageUrl}
-                    />
-                  </a>
-                ) : (
-                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                )}
+                {renderMessageContent(message)}
                 <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
                 </p>
@@ -593,28 +888,18 @@ export function AppPage( ) {
         <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
           {groupMessages.map((message) => {
             const own = message.senderId === user?.id;
-            const isImage = message.type === "image";
+            const isAttachmentMessage = message.type !== "text";
             return (
               <div
                 key={message.id}
                 className={clsx(
                   "max-w-[90%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[82%]",
                   own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
-                  isImage ? "p-2.5" : "break-words px-4 py-3.5"
+                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
                 )}
               >
                 {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700">{message.senderAlias}</p> : null}
-                {isImage ? (
-                  <a href={message.imageUrl} target="_blank" rel="noreferrer" className="block">
-                    <img
-                      alt="Mensaje grupo"
-                      className="max-h-[28rem] w-auto max-w-full rounded-xl object-contain"
-                      src={message.imageUrl}
-                    />
-                  </a>
-                ) : (
-                  <p className="whitespace-pre-wrap break-words">{message.text}</p>
-                )}
+                {renderMessageContent(message)}
                 <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
                   {new Date(message.createdAt).toLocaleTimeString()}
                 </p>
@@ -645,7 +930,7 @@ export function AppPage( ) {
               </div>
               {conversation.lastMessage ? (
                 <p className="mt-1 truncate text-xs text-slate-500">
-                  {conversation.lastMessage.type === "image" ? "[imagen]" : conversation.lastMessage.text}
+                  {getMessagePreview(conversation.lastMessage)}
                 </p>
               ) : (
                 <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
@@ -704,7 +989,7 @@ export function AppPage( ) {
                   <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-700">{group.memberCount}</span>
                 </div>
                 {group.lastMessage ? (
-                  <p className="mt-1 truncate text-xs text-slate-500">{group.lastMessage.type === "image" ? "[imagen]" : group.lastMessage.text}</p>
+                  <p className="mt-1 truncate text-xs text-slate-500">{getMessagePreview(group.lastMessage)}</p>
                 ) : (
                   <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
                 )}
@@ -982,13 +1267,13 @@ export function AppPage( ) {
 
             {(panel === "chats" || panel === "groups") ? (
               <footer className="border-t border-white/70 bg-white/82 p-4 sm:p-5">
-                <form className="flex flex-col gap-3 lg:flex-row lg:items-center" onSubmit={(event) => {
+                <form className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center" onSubmit={(event) => {
                   sendText(event).catch(() => {
                     setStatusText("No fue posible enviar el mensaje.");
                   });
                 }}>
                   <input
-                    className="field-input flex-1 text-base"
+                    className="field-input flex-1 text-base lg:min-w-[220px]"
                     placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
                     value={messageInput}
                     onChange={(event) => {
@@ -999,13 +1284,28 @@ export function AppPage( ) {
                     }}
                   />
                   <label className="secondary-button cursor-pointer">
-                    Foto
-                    <input className="hidden" accept="image/png,image/jpeg,image/webp" type="file" onChange={(event) => {
-                      sendImage(event).catch(() => {
-                        setStatusText("No fue posible enviar imagen.");
+                    Adjuntar
+                    <input className="hidden" accept={ATTACHMENT_ACCEPT} type="file" onChange={(event) => {
+                      sendAttachment(event).catch(() => {
+                        setStatusText("No fue posible enviar el adjunto.");
                       });
                     }} />
                   </label>
+                  <button
+                    className={clsx(
+                      "secondary-button",
+                      isRecordingVoice ? "border-rose-300 bg-rose-50 text-rose-700" : undefined
+                    )}
+                    type="button"
+                    onClick={() => {
+                      toggleVoiceRecording().catch(() => {
+                        setStatusText("No fue posible usar el microfono.");
+                        setIsRecordingVoice(false);
+                      });
+                    }}
+                  >
+                    {isRecordingVoice ? "Detener voz" : "Grabar voz"}
+                  </button>
                   <button className="primary-button lg:min-w-36" type="submit">Enviar</button>
                 </form>
               </footer>
@@ -1014,6 +1314,7 @@ export function AppPage( ) {
         </div>
       </div>
 
+      {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
       {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
     </div>
   );

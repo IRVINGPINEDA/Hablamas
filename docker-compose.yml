@@ -40,6 +40,16 @@ services:
       GROQ__Model: ${GROQ__Model:-meta-llama/llama-4-scout-17b-16e-instruct}
       GROQ__BaseUrl: ${GROQ__BaseUrl:-https://api.groq.com/openai/v1}
       GROQ__MaxImageMb: ${GROQ__MaxImageMb:-4}
+      UPLOADS__MaxAttachmentMb: ${UPLOADS__MaxAttachmentMb:-25}
+      AI__Provider: ${AI__Provider:-groq}
+      OPENAI__ApiKey: ${OPENAI__ApiKey}
+      OPENAI__Model: ${OPENAI__Model:-gpt-4o-mini}
+      OPENAI__BaseUrl: ${OPENAI__BaseUrl:-https://api.openai.com/v1}
+      ANTHROPIC__ApiKey: ${ANTHROPIC__ApiKey}
+      ANTHROPIC__Model: ${ANTHROPIC__Model:-claude-3-5-sonnet-latest}
+      ANTHROPIC__BaseUrl: ${ANTHROPIC__BaseUrl:-https://api.anthropic.com/v1}
+      ANTHROPIC__Version: ${ANTHROPIC__Version:-2023-06-01}
+      ANTHROPIC__MaxTokens: ${ANTHROPIC__MaxTokens:-1024}
       ADMIN__SeedEmail: ${ADMIN__SeedEmail}
       ADMIN__SeedPassword: ${ADMIN__SeedPassword}
     ports:

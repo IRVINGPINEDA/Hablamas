@@ -26,18 +26,27 @@ public sealed class ChatbotController : ControllerBase
     };
 
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly AiOptions _aiOptions;
     private readonly GroqOptions _groqOptions;
+    private readonly OpenAiOptions _openAiOptions;
+    private readonly AnthropicOptions _anthropicOptions;
     private readonly AppDbContext _dbContext;
     private readonly ILogger<ChatbotController> _logger;
 
     public ChatbotController(
         IHttpClientFactory httpClientFactory,
+        IOptions<AiOptions> aiOptions,
         IOptions<GroqOptions> groqOptions,
+        IOptions<OpenAiOptions> openAiOptions,
+        IOptions<AnthropicOptions> anthropicOptions,
         AppDbContext dbContext,
         ILogger<ChatbotController> logger)
     {
         _httpClientFactory = httpClientFactory;
+        _aiOptions = aiOptions.Value;
         _groqOptions = groqOptions.Value;
+        _openAiOptions = openAiOptions.Value;
+        _anthropicOptions = anthropicOptions.Value;
         _dbContext = dbContext;
         _logger = logger;
     }
@@ -60,7 +69,20 @@ public sealed class ChatbotController : ControllerBase
             return BadRequest(new ProblemDetails { Title = "Message or image is required" });
         }
 
-        return await SendWithGroqAsync(history, images, messageText);
+        var provider = (_aiOptions.Provider ?? string.Empty).Trim().ToLowerInvariant();
+        return provider switch
+        {
+            "" => await SendWithGroqAsync(history, images, messageText),
+            "groq" => await SendWithGroqAsync(history, images, messageText),
+            "openai" => await SendWithOpenAiAsync(history, images, messageText),
+            "openrouter" => await SendWithOpenAiAsync(history, images, messageText),
+            "anthropic" or "claude" => await SendWithAnthropicAsync(history, images, messageText),
+            _ => StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Title = "Unsupported AI provider",
+                Detail = "Configura AI:Provider con 'groq', 'openai', 'openrouter' o 'anthropic'."
+            })
+        };
     }
 
     private Task<IActionResult> SendWithGroqAsync(
@@ -82,6 +104,136 @@ public sealed class ChatbotController : ControllerBase
             missingKeyTitle: "Groq API key not configured",
             quotaFallback: "Se alcanzo el limite de cuota en Groq.",
             authFallback: "La configuracion de Groq no es valida.");
+    }
+
+    private Task<IActionResult> SendWithOpenAiAsync(
+        IReadOnlyCollection<ChatbotHistoryMessageRequest> history,
+        IReadOnlyCollection<ChatbotImageRequest> images,
+        string? messageText)
+    {
+        return SendWithOpenAiCompatibleAsync(
+            history,
+            images,
+            messageText,
+            providerName: "OpenAI",
+            apiKey: _openAiOptions.ApiKey,
+            model: _openAiOptions.Model,
+            baseUrl: _openAiOptions.BaseUrl,
+            systemPrompt: _openAiOptions.SystemPrompt,
+            maxImageMb: _openAiOptions.MaxImageMb,
+            maxHistoryMessages: _openAiOptions.MaxHistoryMessages,
+            missingKeyTitle: "OpenAI API key not configured",
+            quotaFallback: "Se alcanzo el limite de cuota en OpenAI.",
+            authFallback: "La configuracion de OpenAI no es valida.");
+    }
+
+    private async Task<IActionResult> SendWithAnthropicAsync(
+        IReadOnlyCollection<ChatbotHistoryMessageRequest> history,
+        IReadOnlyCollection<ChatbotImageRequest> images,
+        string? messageText)
+    {
+        if (string.IsNullOrWhiteSpace(_anthropicOptions.ApiKey))
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails { Title = "Anthropic API key not configured" });
+        }
+
+        var (normalizedImages, imageError) = NormalizeImages(images, _anthropicOptions.MaxImageMb);
+        if (imageError is not null)
+        {
+            return BadRequest(imageError);
+        }
+
+        var messages = new List<object>();
+        foreach (var item in history.TakeLast(_anthropicOptions.MaxHistoryMessages))
+        {
+            var role = item.Role.Trim().ToLowerInvariant();
+            if (role is not ("user" or "assistant"))
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(item.Content))
+            {
+                continue;
+            }
+
+            messages.Add(new
+            {
+                role,
+                content = item.Content.Trim()
+            });
+        }
+
+        var userContent = new List<object>();
+        if (!string.IsNullOrWhiteSpace(messageText))
+        {
+            userContent.Add(new { type = "text", text = messageText });
+        }
+
+        foreach (var image in normalizedImages!)
+        {
+            userContent.Add(new
+            {
+                type = "image",
+                source = new
+                {
+                    type = "base64",
+                    media_type = image.ContentType,
+                    data = image.Base64Data
+                }
+            });
+        }
+
+        messages.Add(new
+        {
+            role = "user",
+            content = userContent
+        });
+
+        var payload = new Dictionary<string, object?>
+        {
+            ["model"] = _anthropicOptions.Model,
+            ["max_tokens"] = _anthropicOptions.MaxTokens,
+            ["messages"] = messages
+        };
+
+        if (!string.IsNullOrWhiteSpace(_anthropicOptions.SystemPrompt))
+        {
+            payload["system"] = _anthropicOptions.SystemPrompt.Trim();
+        }
+
+        var client = _httpClientFactory.CreateClient("openai");
+        using var httpRequest = new HttpRequestMessage(HttpMethod.Post, $"{_anthropicOptions.BaseUrl.TrimEnd('/')}/messages");
+        httpRequest.Headers.TryAddWithoutValidation("x-api-key", _anthropicOptions.ApiKey);
+        httpRequest.Headers.TryAddWithoutValidation("anthropic-version", _anthropicOptions.Version);
+        httpRequest.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
+
+        using var response = await client.SendAsync(httpRequest, HttpCompletionOption.ResponseHeadersRead, HttpContext.RequestAborted);
+        var rawResponse = await response.Content.ReadAsStringAsync(HttpContext.RequestAborted);
+        if (!response.IsSuccessStatusCode)
+        {
+            _logger.LogWarning("Anthropic request failed with status {StatusCode}. Payload: {Response}", (int)response.StatusCode, rawResponse);
+            var upstreamMessage = ExtractAnthropicError(rawResponse);
+            return BuildProviderError(
+                providerName: "Anthropic",
+                statusCode: response.StatusCode,
+                upstreamMessage: upstreamMessage,
+                quotaFallback: "Se alcanzo el limite de cuota en Anthropic.",
+                authFallback: "La configuracion de Anthropic no es valida.");
+        }
+
+        var reply = ExtractAnthropicReply(rawResponse);
+        if (string.IsNullOrWhiteSpace(reply))
+        {
+            _logger.LogWarning("Anthropic returned empty content. Payload: {Response}", rawResponse);
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails { Title = "Anthropic returned empty response" });
+        }
+
+        return Ok(new
+        {
+            reply,
+            model = _anthropicOptions.Model
+        });
     }
 
     private async Task<IActionResult> SendWithOpenAiCompatibleAsync(
@@ -314,6 +466,70 @@ public sealed class ChatbotController : ControllerBase
     }
 
     private static string? ExtractOpenAiCompatibleError(string rawJson)
+    {
+        if (string.IsNullOrWhiteSpace(rawJson))
+        {
+            return null;
+        }
+
+        try
+        {
+            using var doc = JsonDocument.Parse(rawJson);
+            if (!doc.RootElement.TryGetProperty("error", out var error))
+            {
+                return null;
+            }
+
+            if (!error.TryGetProperty("message", out var message) || message.ValueKind != JsonValueKind.String)
+            {
+                return null;
+            }
+
+            return message.GetString();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ExtractAnthropicReply(string rawJson)
+    {
+        using var doc = JsonDocument.Parse(rawJson);
+        if (doc.RootElement.TryGetProperty("content", out var content)
+            && content.ValueKind == JsonValueKind.Array
+            && content.GetArrayLength() > 0)
+        {
+            var builder = new StringBuilder();
+            foreach (var item in content.EnumerateArray())
+            {
+                if (!item.TryGetProperty("type", out var type)
+                    || type.ValueKind != JsonValueKind.String
+                    || !string.Equals(type.GetString(), "text", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (!item.TryGetProperty("text", out var text) || text.ValueKind != JsonValueKind.String)
+                {
+                    continue;
+                }
+
+                if (builder.Length > 0)
+                {
+                    builder.AppendLine();
+                }
+
+                builder.Append(text.GetString());
+            }
+
+            return builder.ToString().Trim();
+        }
+
+        return null;
+    }
+
+    private static string? ExtractAnthropicError(string rawJson)
     {
         if (string.IsNullOrWhiteSpace(rawJson))
         {
