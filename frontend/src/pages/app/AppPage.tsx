@@ -130,14 +130,6 @@ function ContactIcon({ className }: IconProps) {
   );
 }
 
-function ProfileIcon({ className }: IconProps) {
-  return (
-    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
-      <path d="M12 12a4 4 0 1 0-4-4 4 4 0 0 0 4 4Zm7 9a7 7 0 0 0-14 0" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
-    </svg>
-  );
-}
-
 function BotIcon({ className }: IconProps) {
   return (
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
@@ -424,7 +416,7 @@ function HeaderActionButton({ icon, label }: { icon: ReactNode; label: string })
   return (
     <button
       aria-label={label}
-      className="flex h-10 w-10 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
       type="button"
     >
       {icon}
@@ -434,19 +426,19 @@ function HeaderActionButton({ icon, label }: { icon: ReactNode; label: string })
 
 function ChatHeader({ aside, avatar, eyebrow, leadingAction, statusRow, subtitle, title }: ChatHeaderProps) {
   return (
-    <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
-      <div className="flex flex-wrap items-start justify-between gap-4">
+    <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-3">
           {leadingAction ? <div className="lg:hidden">{leadingAction}</div> : null}
           {avatar}
           <div className="min-w-0">
-            <p className="eyebrow-label">{eyebrow}</p>
-            <h2 className="mt-2 truncate text-xl font-bold text-[var(--app-text)]">{title}</h2>
-            <div className="mt-2 text-sm text-[var(--app-subtle-text)]">{subtitle}</div>
-            {statusRow ? <div className="mt-3 flex flex-wrap items-center gap-2">{statusRow}</div> : null}
+            {eyebrow ? <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--app-subtle-text)]">{eyebrow}</p> : null}
+            <p className="truncate text-[15px] font-semibold text-[var(--app-text)]">{title}</p>
+            <div className="mt-0.5 text-xs text-[var(--app-subtle-text)]">{subtitle}</div>
+            {statusRow ? <div className="mt-1.5 flex flex-wrap items-center gap-2">{statusRow}</div> : null}
           </div>
         </div>
-        {aside ? <div className="flex max-w-full flex-wrap items-center gap-2">{aside}</div> : null}
+        {aside ? <div className="flex max-w-full flex-wrap items-center gap-1">{aside}</div> : null}
       </div>
     </header>
   );
@@ -1497,7 +1489,7 @@ export function AppPage() {
           aside={(
             <>
               {typingByConversation[currentConversation.id] ? (
-                <div className="rounded-full bg-amber-100 px-3 py-1.5 text-xs font-semibold text-amber-800">
+                <div className="rounded-full bg-[#103529] px-3 py-1 text-[11px] font-semibold text-[#7df2b0]">
                   {typingByConversation[currentConversation.id]} esta escribiendo...
                 </div>
               ) : null}
@@ -1511,15 +1503,15 @@ export function AppPage() {
           leadingAction={mobileSidebarToggle}
           statusRow={(
             <>
-              <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", online ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
+              <span className={clsx("rounded-full px-2.5 py-1 text-[11px] font-medium", online ? "bg-[#103529] text-[#7df2b0]" : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)]")}>
                 {online ? "En linea" : "Desconectado"}
               </span>
-              <span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">
+              <span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">
                 SignalR: {HubConnectionState[connectionState]}
               </span>
             </>
           )}
-          subtitle={<p className="truncate">Codigo: {currentConversation.contact.publicCode}</p>}
+          subtitle={<p className="truncate">{online ? "en linea" : "ultima actividad no disponible"} | {currentConversation.contact.publicCode}</p>}
           title={contactName}
         />
 
@@ -1581,7 +1573,7 @@ export function AppPage() {
           avatar={<Avatar name={currentGroup.name} size="lg" />}
           eyebrow="Grupo activo"
           leadingAction={mobileSidebarToggle}
-          statusRow={<span className="rounded-full bg-brand-50 px-2.5 py-1 text-xs font-semibold text-brand-700">{groupMembers.length} miembros</span>}
+          statusRow={<span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">{groupMembers.length} miembros</span>}
           subtitle={<p className="truncate">Conversacion grupal compartida</p>}
           title={currentGroup.name}
         />
@@ -1623,7 +1615,6 @@ export function AppPage() {
             <div className="flex items-center justify-between gap-3">
               <div>
                 <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Chats</h2>
-                <p className="mt-1 text-sm text-[var(--app-subtle-text)]">Conversaciones activas y recientes.</p>
               </div>
               <div className="flex items-center gap-1">
                 <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar chats" />
@@ -1631,7 +1622,7 @@ export function AppPage() {
               </div>
             </div>
 
-            <div className="mt-4 flex items-center gap-3 rounded-[18px] bg-[var(--search-bg)] px-4 py-3">
+            <div className="mt-4 flex items-center gap-3 rounded-[10px] bg-[var(--search-bg)] px-4 py-2.5">
               <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
               <input
                 className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
@@ -1641,14 +1632,14 @@ export function AppPage() {
               />
             </div>
 
-            <div className="mt-4 flex flex-wrap items-center gap-2">
+            <div className="mt-3 flex flex-wrap items-center gap-2">
               <ChatFilterChip active={chatFilter === "all"} label="Todos" onClick={() => setChatFilter("all")} />
               <ChatFilterChip active={chatFilter === "unread"} label="No leidos" onClick={() => setChatFilter("unread")} />
               <ChatFilterChip active={chatFilter === "online"} label="En linea" onClick={() => setChatFilter("online")} />
             </div>
           </div>
 
-          <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
             {filteredConversations.length === 0 ? (
               <div className="mx-3 mt-3 rounded-[22px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
                 No hay chats que coincidan con el filtro actual.
@@ -1664,9 +1655,9 @@ export function AppPage() {
               return (
                 <button
                   className={clsx(
-                    "flex w-full items-center gap-3 rounded-[18px] px-3 py-3 text-left transition",
+                    "flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition",
                     selected
-                      ? "bg-[var(--chat-item-active)] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.16)]"
+                      ? "bg-[var(--chat-item-active)]"
                       : "hover:bg-[var(--chat-item-hover)]"
                   )}
                   key={conversation.id}
@@ -1685,7 +1676,7 @@ export function AppPage() {
                   />
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center justify-between gap-3">
-                      <p className={clsx("truncate text-[15px] font-medium", selected ? "text-[var(--app-text)]" : "text-[var(--app-text)]")}>{contactName}</p>
+                      <p className="truncate text-[15px] font-medium text-[var(--app-text)]">{contactName}</p>
                       <span className={clsx("shrink-0 text-[11px]", unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]")}>
                         {formatSidebarTime(previewDate)}
                       </span>
@@ -2009,25 +2000,17 @@ export function AppPage() {
   return (
     <div className="relative h-screen overflow-hidden bg-[var(--app-background)] text-[var(--app-text)]">
       {sidebarOpen ? <button aria-label="Cerrar menu" className="absolute inset-0 z-20 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} type="button" /> : null}
-      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[72px_380px_minmax(0,1fr)] xl:grid-cols-[72px_420px_minmax(0,1fr)]">
+      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[64px_380px_minmax(0,1fr)] xl:grid-cols-[64px_420px_minmax(0,1fr)]">
         <aside
           className={clsx(
-            "absolute inset-y-0 left-0 z-30 grid min-h-0 w-[min(96vw,500px)] grid-cols-[72px_minmax(0,1fr)] overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
+            "absolute inset-y-0 left-0 z-30 grid min-h-0 w-[min(96vw,500px)] grid-cols-[64px_minmax(0,1fr)] overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
             sidebarOpen ? "translate-x-0" : "-translate-x-[105%] lg:translate-x-0"
           )}
         >
-          <div className="flex min-h-0 flex-col items-center border-r border-[var(--surface-border)] bg-[var(--rail-bg)] px-3 py-4">
-            <button
-              className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.16)]"
-              onClick={() => setPanel("profile")}
-              type="button"
-            >
-              {user?.profileImageUrl ? (
-                <img alt={user.publicAlias} className="h-12 w-12 rounded-2xl object-cover" src={user.profileImageUrl} />
-              ) : (
-                <span className="text-sm font-bold">{getInitials(user?.publicAlias || "HM")}</span>
-              )}
-            </button>
+          <div className="flex min-h-0 flex-col items-center border-r border-[var(--surface-border)] bg-[var(--rail-bg)] px-2 py-4">
+            <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#103529] text-[13px] font-extrabold tracking-[0.08em] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]">
+              HM
+            </div>
 
             <div className="flex flex-1 flex-col items-center gap-3">
               <RailButton
@@ -2077,15 +2060,28 @@ export function AppPage() {
               >
                 {themeMode === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
               </button>
-              <RailButton
-                active={panel === "profile"}
-                icon={<ProfileIcon className="h-5 w-5" />}
-                label="Perfil"
+              <button
+                aria-label="Perfil"
+                className={clsx(
+                  "flex h-11 w-11 items-center justify-center overflow-hidden rounded-full transition",
+                  panel === "profile"
+                    ? "bg-[#103529] p-[2px] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]"
+                    : "hover:bg-[var(--rail-hover)]"
+                )}
                 onClick={() => {
                   setPanel("profile");
                   setSidebarOpen(true);
                 }}
-              />
+                type="button"
+              >
+                {user?.profileImageUrl ? (
+                  <img alt={user.publicAlias} className="h-full w-full rounded-full object-cover" src={user.profileImageUrl} />
+                ) : (
+                  <span className={clsx("flex h-full w-full items-center justify-center rounded-full text-sm font-bold", panel === "profile" ? "bg-[#103529] text-[#7df2b0]" : "bg-[var(--chip-bg)] text-[var(--app-text)]")}>
+                    {getInitials(user?.publicAlias || "HM")}
+                  </span>
+                )}
+              </button>
               <RailButton
                 icon={<SettingsIcon className="h-5 w-5" />}
                 label="Salir"
