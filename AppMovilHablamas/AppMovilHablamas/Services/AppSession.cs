@@ -11,6 +11,7 @@ public sealed class AppSession : INotifyPropertyChanged
     private const string RefreshTokenKey = "hablamas_mobile_refresh_token";
     private const string ApiBaseUrlKey = "hablamas_mobile_api_base_url";
     private const string ThemeKey = "hablamas_mobile_theme";
+    private const string PublicApiBaseUrl = "https://caleiro.online/api";
 
     private MobileUserDto? _currentUser;
     private string? _accessToken;
@@ -20,7 +21,8 @@ public sealed class AppSession : INotifyPropertyChanged
 
     public AppSession()
     {
-        _apiBaseUrl = Preferences.Default.Get(ApiBaseUrlKey, GetDefaultApiBaseUrl());
+        var storedApiBaseUrl = Preferences.Default.Get(ApiBaseUrlKey, string.Empty);
+        _apiBaseUrl = ResolveInitialApiBaseUrl(storedApiBaseUrl);
         _themePreference = (AppTheme)Preferences.Default.Get(ThemeKey, (int)AppTheme.Light);
     }
 
@@ -163,8 +165,42 @@ public sealed class AppSession : INotifyPropertyChanged
         return value;
     }
 
+    private static string ResolveInitialApiBaseUrl(string? storedApiBaseUrl)
+    {
+        if (!string.IsNullOrWhiteSpace(storedApiBaseUrl))
+        {
+            var normalized = NormalizeApiBaseUrl(storedApiBaseUrl);
+            if (!ShouldReplaceLocalDebugHost(normalized))
+            {
+                return normalized;
+            }
+
+            Preferences.Default.Set(ApiBaseUrlKey, PublicApiBaseUrl);
+            return PublicApiBaseUrl;
+        }
+
+        return GetDefaultApiBaseUrl();
+    }
+
+    private static bool ShouldReplaceLocalDebugHost(string apiBaseUrl)
+    {
+        if (DeviceInfo.DeviceType != DeviceType.Physical)
+        {
+            return false;
+        }
+
+        return apiBaseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
+            || apiBaseUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase)
+            || apiBaseUrl.Contains("10.0.2.2", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static string GetDefaultApiBaseUrl()
     {
+        if (DeviceInfo.DeviceType == DeviceType.Physical)
+        {
+            return PublicApiBaseUrl;
+        }
+
         return DeviceInfo.Platform == DevicePlatform.Android
             ? "http://10.0.2.2:8080/api"
             : "http://localhost:8080/api";
