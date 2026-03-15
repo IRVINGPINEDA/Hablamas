@@ -47,6 +47,12 @@
 		<TargetPlatformMinVersion Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'windows'">10.0.17763.0</TargetPlatformMinVersion>
 	</PropertyGroup>
 
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and $([MSBuild]::IsOSPlatform('windows'))">
+		<AndroidSdkDirectory Condition="'$(AndroidSdkDirectory)' == '' and Exists('$(LocalAppData)\\Android\\Sdk')">$(LocalAppData)\Android\Sdk</AndroidSdkDirectory>
+		<JavaSdkDirectory Condition="'$(JavaSdkDirectory)' == '' and Exists('C:\\Program Files\\Android\\openjdk\\jdk-21.0.8')">C:\Program Files\Android\openjdk\jdk-21.0.8</JavaSdkDirectory>
+		<JavaSdkDirectory Condition="'$(JavaSdkDirectory)' == '' and Exists('C:\\Program Files\\Android\\Android Studio\\jbr')">C:\Program Files\Android\Android Studio\jbr</JavaSdkDirectory>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
