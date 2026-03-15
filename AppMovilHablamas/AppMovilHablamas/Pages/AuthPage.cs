@@ -7,10 +7,8 @@ namespace AppMovilHablamas.Pages;
 public sealed class AuthPage : ContentPage
 {
     private readonly HablaMasApiClient _apiClient;
-    private readonly AppSession _session;
     private readonly Entry _emailEntry = new() { Keyboard = Keyboard.Email, Placeholder = "Correo" };
     private readonly Entry _passwordEntry = new() { IsPassword = true, Placeholder = "Contrasena" };
-    private readonly Entry _apiUrlEntry = new() { Placeholder = "https://caleiro.online/api" };
     private readonly Entry _firstNameEntry = new() { Placeholder = "Nombre" };
     private readonly Entry _lastNameEntry = new() { Placeholder = "Apellidos" };
     private readonly Entry _addressEntry = new() { Placeholder = "Direccion" };
@@ -22,16 +20,14 @@ public sealed class AuthPage : ContentPage
     private readonly Button _submitButton;
     private bool _registerMode;
 
-    public AuthPage(HablaMasApiClient apiClient, AppSession session)
+    public AuthPage(HablaMasApiClient apiClient)
     {
         _apiClient = apiClient;
-        _session = session;
         Title = "Habla Mas";
         MobileTheme.ApplyPage(this);
 
         MobileTheme.StyleInput(_emailEntry);
         MobileTheme.StyleInput(_passwordEntry);
-        MobileTheme.StyleInput(_apiUrlEntry);
         MobileTheme.StyleInput(_firstNameEntry);
         MobileTheme.StyleInput(_lastNameEntry);
         MobileTheme.StyleInput(_addressEntry);
@@ -70,7 +66,7 @@ public sealed class AuthPage : ContentPage
 
         var helperLabel = new Label
         {
-            Text = "Usa la misma API de la web. En telefono fisico no funciona localhost ni 10.0.2.2.",
+            Text = "Conectado a la misma API de la version web.",
             FontSize = 14
         };
         MobileTheme.StyleMutedText(helperLabel);
@@ -104,7 +100,6 @@ public sealed class AuthPage : ContentPage
                             {
                                 _modeLabel,
                                 helperLabel,
-                                _apiUrlEntry,
                                 new HorizontalStackLayout
                                 {
                                     Spacing = 10,
@@ -125,7 +120,6 @@ public sealed class AuthPage : ContentPage
         };
 
         SetMode(false);
-        _apiUrlEntry.Text = _session.ApiBaseUrl;
     }
 
     private void SetMode(bool registerMode)
@@ -145,8 +139,6 @@ public sealed class AuthPage : ContentPage
 
         try
         {
-            await EnsureApiBaseUrlAsync();
-
             if (_registerMode)
             {
                 await _apiClient.RegisterAsync(new RegisterRequestDto
@@ -184,27 +176,12 @@ public sealed class AuthPage : ContentPage
     {
         try
         {
-            await EnsureApiBaseUrlAsync();
             await _apiClient.ForgotPasswordAsync(_emailEntry.Text?.Trim() ?? string.Empty);
             await DisplayAlertAsync("Recuperacion", "Si el correo existe, se envio un enlace de recuperacion.", "OK");
         }
         catch (Exception ex)
         {
             _statusLabel.Text = ex.Message;
-        }
-    }
-
-    private async Task EnsureApiBaseUrlAsync()
-    {
-        var nextApiUrl = _apiUrlEntry.Text?.Trim() ?? string.Empty;
-        if (string.IsNullOrWhiteSpace(nextApiUrl))
-        {
-            throw new InvalidOperationException("Ingresa una URL valida para la API.");
-        }
-
-        if (!string.Equals(_session.ApiBaseUrl, nextApiUrl, StringComparison.OrdinalIgnoreCase))
-        {
-            await _session.UpdateApiBaseUrlAsync(nextApiUrl);
         }
     }
 }
