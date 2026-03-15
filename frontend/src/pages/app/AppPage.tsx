@@ -68,9 +68,15 @@ interface AvatarProps {
   size?: "md" | "lg";
 }
 
-interface RailButtonProps {
+interface SidebarNavButtonProps {
   active?: boolean;
   badge?: ReactNode;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+interface SidebarFooterButtonProps {
   icon: ReactNode;
   label: string;
   onClick: () => void;
@@ -220,6 +226,14 @@ function SettingsIcon({ className }: IconProps) {
     <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
       <path d="m10.33 4.32 1.15-1.93a.6.6 0 0 1 1.04 0l1.15 1.93a.6.6 0 0 0 .72.27l2.16-.7a.6.6 0 0 1 .77.48l.3 2.22a.6.6 0 0 0 .48.51l2.2.42a.6.6 0 0 1 .34.98l-1.49 1.67a.6.6 0 0 0-.1.67l1 2a.6.6 0 0 1-.43.86l-2.2.42a.6.6 0 0 0-.48.51l-.3 2.22a.6.6 0 0 1-.77.48l-2.16-.7a.6.6 0 0 0-.72.27l-1.15 1.93a.6.6 0 0 1-1.04 0l-1.15-1.93a.6.6 0 0 0-.72-.27l-2.16.7a.6.6 0 0 1-.77-.48l-.3-2.22a.6.6 0 0 0-.48-.51l-2.2-.42a.6.6 0 0 1-.43-.86l1-2a.6.6 0 0 0-.1-.67L2.36 8.5a.6.6 0 0 1 .34-.98l2.2-.42a.6.6 0 0 0 .48-.51l.3-2.22a.6.6 0 0 1 .77-.48l2.16.7a.6.6 0 0 0 .72-.27Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.4" />
       <path d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path d="M15 17l5-5-5-5M20 12H9m5 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
     </svg>
   );
 }
@@ -400,25 +414,39 @@ function Avatar({ name, src, online, size = "md" }: AvatarProps) {
   );
 }
 
-function RailButton({ active, badge, icon, label, onClick }: RailButtonProps) {
+function SidebarNavButton({ active, badge, icon, label, onClick }: SidebarNavButtonProps) {
   return (
     <button
       aria-label={label}
       className={clsx(
-        "group relative flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition",
+        "group inline-flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition",
         active
           ? "bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]"
-          : "hover:bg-[var(--rail-hover)] hover:text-[var(--app-text)]"
+          : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
       )}
       onClick={onClick}
       type="button"
     >
-      {icon}
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
       {badge ? (
-        <span className="absolute -right-1 -top-1 flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
+        <span className="ml-auto inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
           {badge}
         </span>
       ) : null}
+    </button>
+  );
+}
+
+function SidebarFooterButton({ icon, label, onClick }: SidebarFooterButtonProps) {
+  return (
+    <button
+      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="shrink-0">{icon}</span>
+      <span>{label}</span>
     </button>
   );
 }
@@ -1658,10 +1686,10 @@ export function AppPage() {
   const renderSidebarContent = () => {
     return (
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="border-b border-[var(--surface-border)] px-5 py-5">
+        <div className="border-b border-[var(--surface-border)] px-4 py-4">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <h2 className="text-2xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Bandeja</h2>
+              <h2 className="text-xl font-semibold tracking-[-0.02em] text-[var(--app-text)]">Bandeja</h2>
             </div>
             <div className="flex items-center gap-1">
               {inboxFilter !== "chats" ? (
@@ -1675,7 +1703,7 @@ export function AppPage() {
             </div>
           </div>
 
-          <div className="mt-4 flex items-center gap-3 rounded-[10px] bg-[var(--search-bg)] px-4 py-2.5">
+          <div className="mt-3 flex items-center gap-3 rounded-[10px] bg-[var(--search-bg)] px-4 py-2.5">
             <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
             <input
               className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
@@ -1698,7 +1726,7 @@ export function AppPage() {
           </div>
         </div>
 
-        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-2">
+        <div className="min-h-0 flex-1 overflow-y-auto px-1 py-1">
           {showGroupCreator && inboxFilter !== "chats" ? (
             <form className="mx-3 mb-3 rounded-[20px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4" onSubmit={(event) => {
               createGroup(event).catch(() => {
@@ -1759,7 +1787,7 @@ export function AppPage() {
             return (
               <button
                 className={clsx(
-                  "flex w-full items-center gap-3 rounded-[14px] px-3 py-2.5 text-left transition",
+                  "flex w-full items-center gap-3 rounded-[14px] px-3 py-2 text-left transition",
                   selected
                     ? "bg-[var(--chat-item-active)]"
                     : "hover:bg-[var(--chat-item-hover)]"
@@ -1994,23 +2022,50 @@ export function AppPage() {
   return (
     <div className="relative h-screen overflow-hidden bg-[var(--app-background)] text-[var(--app-text)]">
       {sidebarOpen ? <button aria-label="Cerrar menu" className="absolute inset-0 z-20 bg-slate-950/40 lg:hidden" onClick={() => setSidebarOpen(false)} type="button" /> : null}
-      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[64px_380px_minmax(0,1fr)] xl:grid-cols-[64px_420px_minmax(0,1fr)]">
+      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[minmax(320px,360px)_minmax(0,1fr)] xl:grid-cols-[380px_minmax(0,1fr)]">
         <aside
           className={clsx(
-            "absolute inset-y-0 left-0 z-30 grid min-h-0 w-[min(96vw,500px)] grid-cols-[64px_minmax(0,1fr)] overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
+            "absolute inset-y-0 left-0 z-30 flex min-h-0 w-[min(92vw,380px)] flex-col overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
             sidebarOpen ? "translate-x-0" : "-translate-x-[105%] lg:translate-x-0"
           )}
         >
-          <div className="flex min-h-0 flex-col items-center border-r border-[var(--surface-border)] bg-[var(--rail-bg)] px-2 py-4">
-            <div className="mb-5 flex h-10 w-10 items-center justify-center rounded-full bg-[#103529] text-[13px] font-extrabold tracking-[0.08em] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]">
-              HM
+          <div className="flex items-center gap-3 border-b border-[var(--surface-border)] px-4 py-3">
+            <button
+              className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--chip-bg)] transition hover:bg-[var(--chip-hover)]"
+              onClick={() => {
+                setPanel("profile");
+                setSidebarOpen(true);
+              }}
+              type="button"
+            >
+              {user?.profileImageUrl ? (
+                <img alt={user.publicAlias} className="h-full w-full rounded-full object-cover" src={user.profileImageUrl} />
+              ) : (
+                <span className="flex h-full w-full items-center justify-center rounded-full text-sm font-bold text-[var(--app-text)]">
+                  {getInitials(user?.publicAlias || "HM")}
+                </span>
+              )}
+            </button>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-semibold text-[var(--app-text)]">{profile.publicAlias || user?.publicAlias || "Habla Mas"}</p>
+              <p className="truncate text-[11px] text-[var(--app-subtle-text)]">Habla Mas</p>
             </div>
+            <button
+              aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+              onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
+              type="button"
+            >
+              {themeMode === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
+            </button>
+          </div>
 
-            <div className="flex flex-1 flex-col items-center gap-3">
-              <RailButton
+          <div className="border-b border-[var(--surface-border)] px-4 py-3">
+            <div className="grid grid-cols-2 gap-2">
+              <SidebarNavButton
                 active={panel === "chats"}
                 badge={Object.values(unreadByConversation).reduce((sum, value) => sum + value, 0) || undefined}
-                icon={<ChatIcon className="h-5 w-5" />}
+                icon={<ChatIcon className="h-4 w-4" />}
                 label="Chats"
                 onClick={() => {
                   setPanel("chats");
@@ -2019,10 +2074,10 @@ export function AppPage() {
                   setSidebarOpen(true);
                 }}
               />
-              <RailButton
+              <SidebarNavButton
                 active={panel === "groups"}
                 badge={groupChats.length || undefined}
-                icon={<GroupIcon className="h-5 w-5" />}
+                icon={<GroupIcon className="h-4 w-4" />}
                 label="Grupos"
                 onClick={() => {
                   setPanel("groups");
@@ -2030,10 +2085,10 @@ export function AppPage() {
                   setSidebarOpen(true);
                 }}
               />
-              <RailButton
+              <SidebarNavButton
                 active={panel === "contacts"}
                 badge={contacts.length || undefined}
-                icon={<ContactIcon className="h-5 w-5" />}
+                icon={<ContactIcon className="h-4 w-4" />}
                 label="Contactos"
                 onClick={() => {
                   setPanel("contacts");
@@ -2041,63 +2096,35 @@ export function AppPage() {
                   setSidebarOpen(true);
                 }}
               />
-              <Link aria-label="Chatbot IA" className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--rail-hover)] hover:text-[var(--app-text)]" to="/chatbot">
-                <span className="sr-only">Chatbot IA</span>
-                <span>
-                  <BotIcon className="h-5 w-5" />
-                </span>
+              <Link
+                aria-label="Chatbot IA"
+                className="inline-flex min-w-0 items-center gap-2 rounded-xl bg-[var(--chip-bg)] px-3 py-2 text-sm font-medium text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                to="/chatbot"
+              >
+                <BotIcon className="h-4 w-4 shrink-0" />
+                <span className="truncate">Chatbot IA</span>
               </Link>
-            </div>
-
-            <div className="mt-auto flex flex-col items-center gap-3">
-              <button
-                aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
-                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--rail-hover)] hover:text-[var(--app-text)]"
-                onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
-                type="button"
-              >
-                {themeMode === "dark" ? <SunIcon className="h-5 w-5" /> : <MoonIcon className="h-5 w-5" />}
-              </button>
-              <button
-                aria-label="Perfil"
-                className={clsx(
-                  "flex h-11 w-11 items-center justify-center overflow-hidden rounded-full transition",
-                  panel === "profile"
-                    ? "bg-[#103529] p-[2px] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]"
-                    : "hover:bg-[var(--rail-hover)]"
-                )}
-                onClick={() => {
-                  setPanel("profile");
-                  setShowGroupCreator(false);
-                  setSidebarOpen(true);
-                }}
-                type="button"
-              >
-                {user?.profileImageUrl ? (
-                  <img alt={user.publicAlias} className="h-full w-full rounded-full object-cover" src={user.profileImageUrl} />
-                ) : (
-                  <span className={clsx("flex h-full w-full items-center justify-center rounded-full text-sm font-bold", panel === "profile" ? "bg-[#103529] text-[#7df2b0]" : "bg-[var(--chip-bg)] text-[var(--app-text)]")}>
-                    {getInitials(user?.publicAlias || "HM")}
-                  </span>
-                )}
-              </button>
-              <RailButton
-                icon={<SettingsIcon className="h-5 w-5" />}
-                label="Salir"
-                onClick={() => logout().catch(() => undefined)}
-              />
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col bg-[var(--sidebar-bg)]">
-            <div className="flex items-center justify-between border-b border-[var(--surface-border)] px-5 py-4 lg:hidden">
-              <div className="min-w-0">
-                <p className="text-[11px] font-bold uppercase tracking-[0.24em] text-[var(--app-subtle-text)]">Habla Mas</p>
-                <p className="truncate text-sm text-[var(--app-text)]">{user?.publicAlias}</p>
-              </div>
-              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
-            </div>
+          <div className="min-h-0 flex-1 bg-[var(--sidebar-bg)]">
             {renderSidebarContent()}
+          </div>
+
+          <div className="flex items-center justify-between gap-2 border-t border-[var(--surface-border)] px-3 py-3">
+            <SidebarFooterButton
+              icon={<SettingsIcon className="h-4 w-4" />}
+              label="Perfil"
+              onClick={() => {
+                setPanel("profile");
+                setSidebarOpen(true);
+              }}
+            />
+            <SidebarFooterButton
+              icon={<LogoutIcon className="h-4 w-4" />}
+              label="Salir"
+              onClick={() => logout().catch(() => undefined)}
+            />
           </div>
         </aside>
 
