@@ -184,26 +184,15 @@ public sealed class AppSession : INotifyPropertyChanged
 
     private static bool ShouldReplaceLocalDebugHost(string apiBaseUrl)
     {
-        if (DeviceInfo.DeviceType != DeviceType.Physical)
-        {
-            return false;
-        }
-
         return apiBaseUrl.Contains("localhost", StringComparison.OrdinalIgnoreCase)
             || apiBaseUrl.Contains("127.0.0.1", StringComparison.OrdinalIgnoreCase)
-            || apiBaseUrl.Contains("10.0.2.2", StringComparison.OrdinalIgnoreCase);
+            || apiBaseUrl.Contains("10.0.2.2", StringComparison.OrdinalIgnoreCase)
+            || apiBaseUrl.Contains("10.0.0.2", StringComparison.OrdinalIgnoreCase);
     }
 
     private static string GetDefaultApiBaseUrl()
     {
-        if (DeviceInfo.DeviceType == DeviceType.Physical)
-        {
-            return PublicApiBaseUrl;
-        }
-
-        return DeviceInfo.Platform == DevicePlatform.Android
-            ? "http://10.0.2.2:8080/api"
-            : "http://localhost:8080/api";
+        return PublicApiBaseUrl;
     }
 
     private void RaiseSessionChanged() => SessionChanged?.Invoke(this, EventArgs.Empty);
