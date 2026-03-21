@@ -1,5 +1,6 @@
 using HablaMas.Api.Contracts.GroupChats;
 using HablaMas.Api.Extensions;
+using HablaMas.Api.Services;
 using HablaMas.Domain.Entities;
 using HablaMas.Domain.Enums;
 using HablaMas.Infrastructure.Data;
@@ -15,10 +16,14 @@ namespace HablaMas.Api.Controllers;
 public sealed class GroupChatsController : ControllerBase
 {
     private readonly AppDbContext _dbContext;
+    private readonly PresenceTracker _presenceTracker;
+    private readonly IWebPushService _webPushService;
 
-    public GroupChatsController(AppDbContext dbContext)
+    public GroupChatsController(AppDbContext dbContext, PresenceTracker presenceTracker, IWebPushService webPushService)
     {
         _dbContext = dbContext;
+        _presenceTracker = presenceTracker;
+        _webPushService = webPushService;
     }
 
     [HttpGet]
@@ -344,6 +349,23 @@ public sealed class GroupChatsController : ControllerBase
         _dbContext.GroupChatMessages.Add(message);
         await _dbContext.SaveChangesAsync();
 
+        var recipientIds = group.Members
+            .Select(member => member.UserId)
+            .Where(memberId => memberId != userId && !_presenceTracker.IsOnline(memberId))
+            .Distinct()
+            .ToArray();
+
+        if (recipientIds.Length > 0)
+        {
+            var senderAlias = User.Identity?.Name ?? "Nuevo mensaje";
+            await _webPushService.SendNotificationAsync(
+                recipientIds,
+                group.Name,
+                $"{senderAlias}: {BuildMessagePreview(type, text, attachmentName)}",
+                "/app",
+                $"group:{group.Id}");
+        }
+
         return Ok(new
         {
             id = message.Id,
@@ -384,5 +406,18 @@ public sealed class GroupChatsController : ControllerBase
         }
 
         return null;
+    }
+
+    private static string BuildMessagePreview(MessageType type, string? text, string? attachmentName)
+    {
+        return type switch
+        {
+            MessageType.Text => string.IsNullOrWhiteSpace(text) ? "Hay un mensaje nuevo en el grupo." : text,
+            MessageType.Image => "Envio una imagen.",
+            MessageType.Video => "Envio un video.",
+            MessageType.Audio => "Envio una nota de voz.",
+            MessageType.File => string.IsNullOrWhiteSpace(attachmentName) ? "Envio un archivo." : $"Archivo: {attachmentName}",
+            _ => "Hay un mensaje nuevo en el grupo."
+        };
     }
 }

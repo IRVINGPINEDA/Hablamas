@@ -18,6 +18,7 @@ export interface AuthUser {
   emailConfirmed: boolean;
   mustChangePassword: boolean;
   profileImageUrl?: string;
+  passkeyCount: number;
   roles: string[];
 }
 
@@ -30,6 +31,16 @@ export interface AuthPayload {
   email: string;
   publicAlias: string;
   roles: string[];
+}
+
+export interface PasskeyCredentialSummary {
+  id: string;
+  friendlyName: string;
+  credentialId: string;
+  authenticatorAttachment?: string;
+  transports: string[];
+  createdAt: string;
+  lastUsedAt?: string;
 }
 
 export interface ConversationSummary {

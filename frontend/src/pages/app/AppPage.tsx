@@ -4,6 +4,8 @@ import { HubConnection, HubConnectionState } from "@microsoft/signalr";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
+import { fetchPasskeyCredentials, getPasskeyErrorMessage, isPasskeySupported, registerCurrentPasskey, removePasskeyCredential } from "../../lib/passkeys";
+import { disablePushNotifications, enablePushNotifications, getPushNotificationErrorMessage, getPushNotificationStatus, isPushNotificationsSupported } from "../../lib/pushNotifications";
 import { createChatConnection } from "../../lib/signalr";
 import type {
   ChatAttachmentDto,
@@ -13,7 +15,8 @@ import type {
   GroupChatSummary,
   GroupMemberDto,
   GroupMessageDto,
-  MessageDto
+  MessageDto,
+  PasskeyCredentialSummary
 } from "../../types";
 
 interface ProfileForm {
@@ -94,6 +97,18 @@ function formatBytes(bytes?: number): string {
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+function formatRelativeDate(value?: string): string {
+  if (!value) {
+    return "Aun no se ha usado";
+  }
+
+  const date = new Date(value);
+  return date.toLocaleString("es-MX", {
+    dateStyle: "medium",
+    timeStyle: "short"
+  });
+}
+
 function getVoiceExtension(contentType: string): string {
   if (contentType.includes("ogg")) {
     return ".ogg";
@@ -163,7 +178,17 @@ export function AppPage( ) {
     theme: 1,
     accentColor: "#5f7888"
   });
+  const [passkeys, setPasskeys] = useState<PasskeyCredentialSummary[]>([]);
+  const [newPasskeyName, setNewPasskeyName] = useState("");
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyRemovingId, setPasskeyRemovingId] = useState<string | null>(null);
+  const [pushBusy, setPushBusy] = useState(false);
+  const [pushConfigured, setPushConfigured] = useState(false);
+  const [pushEnabled, setPushEnabled] = useState(false);
+  const [pushPermission, setPushPermission] = useState<NotificationPermission>("default");
   const [statusText, setStatusText] = useState<string | null>(null);
+  const passkeyAvailable = isPasskeySupported();
+  const pushSupported = isPushNotificationsSupported();
   const selectedConversationRef = useRef<string | null>(null);
   const connectionRef = useRef<HubConnection | null>(null);
   const contactsRef = useRef<ContactDto[]>([]);
@@ -235,6 +260,18 @@ export function AppPage( ) {
     });
   };
 
+  const loadPasskeys = async (): Promise<void> => {
+    const credentials = await fetchPasskeyCredentials();
+    setPasskeys(credentials);
+  };
+
+  const loadPushStatus = async (): Promise<void> => {
+    const status = await getPushNotificationStatus();
+    setPushConfigured(status.configured);
+    setPushEnabled(status.subscribed);
+    setPushPermission(status.permission);
+  };
+
   const loadMessages = async (conversationId: string): Promise<void> => {
     const response = await authApi.get(`/chats/${conversationId}/messages?page=1&pageSize=70`);
     const items = response.data.items as MessageDto[];
@@ -265,7 +302,7 @@ export function AppPage( ) {
       return;
     }
 
-    Promise.all([loadSidebar(), loadGroups(), loadProfile()]).catch(() => {
+    Promise.all([loadSidebar(), loadGroups(), loadProfile(), loadPasskeys(), loadPushStatus()]).catch(() => {
       setStatusText("No fue posible cargar la aplicacion.");
     });
   }, [user]);
@@ -701,6 +738,63 @@ export function AppPage( ) {
     await authApi.put("/profile/me", profile);
     await refreshProfile();
     setStatusText("Perfil actualizado.");
+  };
+
+  const createPasskey = async (): Promise<void> => {
+    setPasskeyBusy(true);
+
+    try {
+      const message = await registerCurrentPasskey(newPasskeyName);
+      setNewPasskeyName("");
+      await Promise.all([loadPasskeys(), refreshProfile()]);
+      setStatusText(message);
+    } catch (error: unknown) {
+      setStatusText(getPasskeyErrorMessage(error, "No fue posible registrar la clave segura."));
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const deletePasskey = async (passkeyId: string): Promise<void> => {
+    setPasskeyRemovingId(passkeyId);
+
+    try {
+      const message = await removePasskeyCredential(passkeyId);
+      await Promise.all([loadPasskeys(), refreshProfile()]);
+      setStatusText(message);
+    } catch (error: unknown) {
+      setStatusText(getPasskeyErrorMessage(error, "No fue posible eliminar la clave segura."));
+    } finally {
+      setPasskeyRemovingId(null);
+    }
+  };
+
+  const activatePush = async (): Promise<void> => {
+    setPushBusy(true);
+
+    try {
+      const message = await enablePushNotifications();
+      await loadPushStatus();
+      setStatusText(message);
+    } catch (error: unknown) {
+      setStatusText(getPushNotificationErrorMessage(error, "No fue posible activar las notificaciones push."));
+    } finally {
+      setPushBusy(false);
+    }
+  };
+
+  const deactivatePush = async (): Promise<void> => {
+    setPushBusy(true);
+
+    try {
+      const message = await disablePushNotifications();
+      await loadPushStatus();
+      setStatusText(message);
+    } catch (error: unknown) {
+      setStatusText(getPushNotificationErrorMessage(error, "No fue posible desactivar las notificaciones push."));
+    } finally {
+      setPushBusy(false);
+    }
   };
 
   const uploadProfileImage = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
@@ -1182,6 +1276,115 @@ export function AppPage( ) {
               <p className="font-semibold text-slate-900">Consejo</p>
               <p className="mt-2 leading-6">Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y grupales.</p>
             </div>
+            <div className="mt-4 rounded-[24px] border border-brand-200 bg-brand-50/75 p-4 text-sm text-slate-700">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-900">Notificaciones push web</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    Recibe avisos cuando lleguen mensajes y no tengas la aplicacion abierta en primer plano.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-700">
+                  {pushEnabled ? "Activas" : "Inactivas"}
+                </span>
+              </div>
+
+              {!pushSupported ? (
+                <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-xs text-slate-500">
+                  Este navegador no soporta Service Worker o Push API en el contexto actual.
+                </p>
+              ) : !pushConfigured ? (
+                <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-xs text-slate-500">
+                  El servidor aun no tiene configuradas las claves VAPID para enviar push.
+                </p>
+              ) : (
+                <div className="mt-4 space-y-3">
+                  <div className="rounded-2xl bg-white px-4 py-3 text-xs text-slate-500">
+                    Permiso del navegador: {pushPermission === "granted" ? "concedido" : pushPermission === "denied" ? "bloqueado" : "pendiente"}
+                  </div>
+                  <button
+                    className="primary-button w-full"
+                    type="button"
+                    disabled={pushBusy}
+                    onClick={() => {
+                      (pushEnabled ? deactivatePush() : activatePush()).catch(() => undefined);
+                    }}
+                  >
+                    {pushBusy ? "Actualizando notificaciones..." : pushEnabled ? "Desactivar notificaciones push" : "Activar notificaciones push"}
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 rounded-[24px] border border-brand-200 bg-brand-50/75 p-4 text-sm text-slate-700">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-900">Claves seguras</p>
+                  <p className="mt-1 text-xs leading-5 text-slate-600">
+                    Registra una passkey para entrar con huella, rostro o PIN sin afectar tu login actual.
+                  </p>
+                </div>
+                <span className="rounded-full bg-white px-3 py-1 text-xs font-semibold text-brand-700">
+                  {user?.passkeyCount ?? passkeys.length} activas
+                </span>
+              </div>
+
+              {passkeyAvailable ? (
+                <div className="mt-4 space-y-3">
+                  <input
+                    className="field-input"
+                    placeholder="Nombre del dispositivo (opcional)"
+                    value={newPasskeyName}
+                    onChange={(event) => setNewPasskeyName(event.target.value)}
+                  />
+                  <button className="primary-button w-full" type="button" disabled={passkeyBusy} onClick={() => {
+                    createPasskey().catch(() => undefined);
+                  }}>
+                    {passkeyBusy ? "Registrando clave segura..." : "Registrar clave segura"}
+                  </button>
+                </div>
+              ) : (
+                <p className="mt-4 rounded-2xl bg-white px-4 py-3 text-xs text-slate-500">
+                  Tu navegador actual no expone WebAuthn en un contexto seguro compatible.
+                </p>
+              )}
+
+              <div className="mt-4 space-y-3">
+                {passkeys.length === 0 ? (
+                  <div className="rounded-2xl bg-white px-4 py-3 text-xs text-slate-500">
+                    Aun no has registrado ninguna clave segura en esta cuenta.
+                  </div>
+                ) : (
+                  passkeys.map((passkey) => (
+                    <article className="rounded-2xl bg-white px-4 py-3" key={passkey.id}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div>
+                          <p className="font-semibold text-slate-900">{passkey.friendlyName}</p>
+                          <p className="mt-1 text-xs text-slate-500">
+                            {passkey.authenticatorAttachment === "platform" ? "Integrada en el dispositivo" : "Llave o dispositivo externo"}
+                          </p>
+                        </div>
+                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[11px] font-semibold text-slate-600">
+                          {passkey.transports[0] || "passkey"}
+                        </span>
+                      </div>
+                      <p className="mt-3 text-xs text-slate-500">Creada: {formatRelativeDate(passkey.createdAt)}</p>
+                      <p className="mt-1 text-xs text-slate-500">Ultimo uso: {formatRelativeDate(passkey.lastUsedAt)}</p>
+                      <button
+                        className="mt-3 text-xs font-semibold text-rose-600 transition hover:text-rose-700 disabled:cursor-not-allowed disabled:text-slate-400"
+                        type="button"
+                        disabled={passkeyRemovingId === passkey.id}
+                        onClick={() => {
+                          deletePasskey(passkey.id).catch(() => undefined);
+                        }}
+                      >
+                        {passkeyRemovingId === passkey.id ? "Eliminando..." : "Eliminar clave segura"}
+                      </button>
+                    </article>
+                  ))
+                )}
+              </div>
+            </div>
           </aside>
         </div>
       </section>
@@ -1314,7 +1517,6 @@ export function AppPage( ) {
         </div>
       </div>
 
-      {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
       {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
     </div>
   );

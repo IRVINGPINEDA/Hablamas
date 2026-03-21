@@ -18,6 +18,8 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
     public DbSet<GroupChat> GroupChats => Set<GroupChat>();
     public DbSet<GroupChatMember> GroupChatMembers => Set<GroupChatMember>();
     public DbSet<GroupChatMessage> GroupChatMessages => Set<GroupChatMessage>();
+    public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
+    public DbSet<WebPushSubscription> WebPushSubscriptions => Set<WebPushSubscription>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
 
@@ -36,6 +38,31 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.Property(x => x.PublicAlias).HasMaxLength(80);
             entity.Property(x => x.AccentColor).HasMaxLength(20);
             entity.Property(x => x.Bio).HasMaxLength(280);
+        });
+
+        builder.Entity<PasskeyCredential>(entity =>
+        {
+            entity.HasIndex(x => x.CredentialId).IsUnique();
+            entity.Property(x => x.FriendlyName).HasMaxLength(120);
+            entity.Property(x => x.AaGuid).HasMaxLength(64);
+            entity.Property(x => x.AuthenticatorAttachment).HasMaxLength(40);
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.PasskeyCredentials)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<WebPushSubscription>(entity =>
+        {
+            entity.HasIndex(x => x.Endpoint).IsUnique();
+            entity.Property(x => x.Endpoint).HasMaxLength(1000);
+            entity.Property(x => x.P256Dh).HasMaxLength(255);
+            entity.Property(x => x.Auth).HasMaxLength(255);
+            entity.Property(x => x.UserAgent).HasMaxLength(300);
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.WebPushSubscriptions)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
         });
 
         builder.Entity<Contact>(entity =>

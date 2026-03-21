@@ -24,4 +24,6 @@ public class AppUser : IdentityUser<Guid>
     public ICollection<Conversation> ConversationsB { get; set; } = new List<Conversation>();
     public ICollection<GroupChat> OwnedGroupChats { get; set; } = new List<GroupChat>();
     public ICollection<GroupChatMember> GroupChatMemberships { get; set; } = new List<GroupChatMember>();
+    public ICollection<PasskeyCredential> PasskeyCredentials { get; set; } = new List<PasskeyCredential>();
+    public ICollection<WebPushSubscription> WebPushSubscriptions { get; set; } = new List<WebPushSubscription>();
 }

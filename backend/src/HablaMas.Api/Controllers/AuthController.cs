@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Text;
 using HablaMas.Api.Contracts.Auth;
 using HablaMas.Api.Extensions;
+using HablaMas.Api.Services;
 using HablaMas.Application.DTOs;
 using HablaMas.Application.Interfaces;
 using HablaMas.Domain.Entities;
@@ -23,6 +24,7 @@ public sealed class AuthController : ControllerBase
     private readonly UserManager<AppUser> _userManager;
     private readonly AppDbContext _dbContext;
     private readonly IJwtTokenService _jwtTokenService;
+    private readonly IAuthSessionService _authSessionService;
     private readonly IPasswordGenerator _passwordGenerator;
     private readonly IEmailService _emailService;
     private readonly IEmailTemplateService _emailTemplateService;
@@ -34,6 +36,7 @@ public sealed class AuthController : ControllerBase
         UserManager<AppUser> userManager,
         AppDbContext dbContext,
         IJwtTokenService jwtTokenService,
+        IAuthSessionService authSessionService,
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
         IEmailTemplateService emailTemplateService,
@@ -44,6 +47,7 @@ public sealed class AuthController : ControllerBase
         _userManager = userManager;
         _dbContext = dbContext;
         _jwtTokenService = jwtTokenService;
+        _authSessionService = authSessionService;
         _passwordGenerator = passwordGenerator;
         _emailService = emailService;
         _emailTemplateService = emailTemplateService;
@@ -261,32 +265,8 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new ProblemDetails { Title = "Invalid credentials" });
         }
 
-        var roles = await _userManager.GetRolesAsync(user);
-        var accessToken = _jwtTokenService.CreateAccessToken(user, roles);
-        var refreshTokenValue = _jwtTokenService.CreateRefreshTokenValue();
-
-        _dbContext.RefreshTokens.Add(new RefreshToken
-        {
-            Id = Guid.NewGuid(),
-            UserId = user.Id,
-            Token = refreshTokenValue,
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenDays)
-        });
-
-        user.LastLoginAt = DateTimeOffset.UtcNow;
-        await _dbContext.SaveChangesAsync();
-
-        return Ok(new AuthResponseDto
-        {
-            AccessToken = accessToken,
-            RefreshToken = refreshTokenValue,
-            MustChangePassword = user.MustChangePassword,
-            EmailConfirmed = user.EmailConfirmed,
-            UserId = user.Id.ToString(),
-            Email = user.Email ?? string.Empty,
-            PublicAlias = user.PublicAlias,
-            Roles = roles.ToArray()
-        });
+        var response = await _authSessionService.CreateSessionAsync(user);
+        return Ok(response);
     }
 
     [HttpPost("refresh")]
@@ -454,6 +434,7 @@ public sealed class AuthController : ControllerBase
         }
 
         var roles = await _userManager.GetRolesAsync(user);
+        var passkeyCount = await _dbContext.PasskeyCredentials.CountAsync(x => x.UserId == user.Id);
 
         return Ok(new
         {
@@ -468,6 +449,7 @@ public sealed class AuthController : ControllerBase
             user.EmailConfirmed,
             user.MustChangePassword,
             user.ProfileImageUrl,
+            passkeyCount,
             roles
         });
     }
