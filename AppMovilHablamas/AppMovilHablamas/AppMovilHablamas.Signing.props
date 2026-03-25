@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup Condition="$(TargetFramework.Contains('-android')) and '$(Configuration)' == 'Release'">
+    <AndroidKeyStore>true</AndroidKeyStore>
+    <AndroidSigningKeyStore>B:\cosasEscuela\UBAM\CosasEscuela2026\Nube\ProyectoChat\Hablamas\AppMovilHablamas\AppMovilHablamas\keystore\hablamas-release.keystore</AndroidSigningKeyStore>
+    <AndroidSigningStorePass>3guzYs7ad4FlNMoEiTyWtbkw</AndroidSigningStorePass>
+    <AndroidSigningKeyAlias>hablamasrelease</AndroidSigningKeyAlias>
+    <AndroidSigningKeyPass>3guzYs7ad4FlNMoEiTyWtbkw</AndroidSigningKeyPass>
+  </PropertyGroup>
+</Project>

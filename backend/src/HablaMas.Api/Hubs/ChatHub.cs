@@ -16,17 +16,20 @@ public sealed class ChatHub : Hub
     private readonly AppDbContext _dbContext;
     private readonly UserManager<AppUser> _userManager;
     private readonly PresenceTracker _presenceTracker;
+    private readonly IWebPushService _webPushService;
     private readonly ILogger<ChatHub> _logger;
 
     public ChatHub(
         AppDbContext dbContext,
         UserManager<AppUser> userManager,
         PresenceTracker presenceTracker,
+        IWebPushService webPushService,
         ILogger<ChatHub> logger)
     {
         _dbContext = dbContext;
         _userManager = userManager;
         _presenceTracker = presenceTracker;
+        _webPushService = webPushService;
         _logger = logger;
     }
 
@@ -306,7 +309,29 @@ public sealed class ChatHub : Hub
                 recipientId
             });
         }
+        else
+        {
+            await _webPushService.SendNotificationAsync(
+                [recipientId],
+                Context.User?.Identity?.Name ?? "Nuevo mensaje",
+                BuildMessagePreview(type, text, attachmentName),
+                "/app",
+                $"conversation:{conversation.Id}");
+        }
 
         _logger.LogDebug("Message {MessageId} sent in conversation {ConversationId}", message.Id, conversation.Id);
+    }
+
+    private static string BuildMessagePreview(MessageType type, string? text, string? attachmentName)
+    {
+        return type switch
+        {
+            MessageType.Text => string.IsNullOrWhiteSpace(text) ? "Te enviaron un mensaje." : text,
+            MessageType.Image => "Te envio una imagen.",
+            MessageType.Video => "Te envio un video.",
+            MessageType.Audio => "Te envio una nota de voz.",
+            MessageType.File => string.IsNullOrWhiteSpace(attachmentName) ? "Te envio un archivo." : $"Archivo: {attachmentName}",
+            _ => "Tienes un mensaje nuevo."
+        };
     }
 }

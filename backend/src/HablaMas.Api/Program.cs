@@ -1,6 +1,8 @@
 using System.Security.Claims;
 using System.Text;
+using Fido2NetLib;
 using HablaMas.Api.Hubs;
+using HablaMas.Api.Options;
 using HablaMas.Api.Services;
 using HablaMas.Infrastructure.Data;
 using HablaMas.Infrastructure.DependencyInjection;
@@ -10,6 +12,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.FileProviders;
+using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
 using StackExchange.Redis;
@@ -19,6 +22,10 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<PresenceTracker>();
+builder.Services.AddScoped<IAuthSessionService, AuthSessionService>();
+builder.Services.AddScoped<IWebPushService, WebPushService>();
+builder.Services.AddSingleton<IPasskeyOperationStore, PasskeyOperationStore>();
+builder.Services.AddMemoryCache();
 builder.Services.AddHttpClient("openai", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(120);
@@ -60,6 +67,15 @@ builder.Services.AddSwaggerGen(options =>
     {
         { securityScheme, Array.Empty<string>() }
     });
+});
+var passkeyOptions = ResolvePasskeyOptions(builder.Configuration);
+builder.Services.AddSingleton(Options.Create(passkeyOptions));
+builder.Services.Configure<WebPushOptions>(builder.Configuration.GetSection(WebPushOptions.SectionName));
+builder.Services.AddFido2(options =>
+{
+    options.ServerDomain = passkeyOptions.RpId;
+    options.ServerName = passkeyOptions.RpName;
+    options.Origins = passkeyOptions.Origins.ToHashSet(StringComparer.OrdinalIgnoreCase);
 });
 
 var jwt = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
@@ -118,6 +134,8 @@ var signalRBuilder = builder.Services.AddSignalR();
 var redisConnection = builder.Configuration["Redis:ConnectionString"];
 if (!string.IsNullOrWhiteSpace(redisConnection))
 {
+    builder.Services.AddSingleton<IConnectionMultiplexer>(_ => ConnectionMultiplexer.Connect(redisConnection));
+
     signalRBuilder.AddStackExchangeRedis(redisConnection, options =>
     {
         options.Configuration.ChannelPrefix = RedisChannel.Literal("hablamas");
@@ -189,3 +207,48 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.Run();
+
+static PasskeyOptions ResolvePasskeyOptions(IConfiguration configuration)
+{
+    var configured = configuration.GetSection(PasskeyOptions.SectionName).Get<PasskeyOptions>() ?? new PasskeyOptions();
+    configured.RpName = string.IsNullOrWhiteSpace(configured.RpName) ? "Habla Mas" : configured.RpName.Trim();
+
+    var appBaseUrl = configuration["APP_BASE_URL"]?.TrimEnd('/');
+    var configuredOrigins = configured.Origins
+        .Where(origin => !string.IsNullOrWhiteSpace(origin))
+        .Select(origin => origin.Trim().TrimEnd('/'))
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    if (configuredOrigins.Count == 0 && Uri.TryCreate(appBaseUrl, UriKind.Absolute, out var appBaseUri))
+    {
+        configuredOrigins.Add(appBaseUri.GetLeftPart(UriPartial.Authority));
+    }
+
+    if (string.IsNullOrWhiteSpace(configured.RpId))
+    {
+        if (Uri.TryCreate(appBaseUrl, UriKind.Absolute, out var parsedAppBaseUri))
+        {
+            configured.RpId = parsedAppBaseUri.Host;
+        }
+        else
+        {
+            configured.RpId = "localhost";
+        }
+    }
+
+    if (configuredOrigins.Count == 0 && string.Equals(configured.RpId, "localhost", StringComparison.OrdinalIgnoreCase))
+    {
+        configuredOrigins.AddRange([
+            "http://localhost:5173",
+            "http://localhost:4173",
+            "http://localhost:3000",
+            "http://localhost:8080"
+        ]);
+    }
+
+    configured.Origins = configuredOrigins.Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
+    configured.TimeoutMs = configured.TimeoutMs <= 0 ? 60000 : configured.TimeoutMs;
+    configured.OperationTtlSeconds = configured.OperationTtlSeconds <= 0 ? 300 : configured.OperationTtlSeconds;
+    return configured;
+}

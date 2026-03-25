@@ -16,11 +16,3 @@ uploads/
 # IDE
 .vscode/
 .idea/
-.vs
-
-# Android signing
-*.keystore
-*.jks
-*.p12
-*.mobile-signing.props
-*Signing.props
