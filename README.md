@@ -34,91 +34,6 @@ Habla Mas es una aplicacion de chat web tipo WhatsApp construida con ASP.NET Cor
   README.md
 ```
 
-## Variables de entorno
-
-Copia `.env.example` a `.env` y completa los valores reales.
-
-```bash
-cp .env.example .env
-```
-
-Claves principales:
-
-- `APP_BASE_URL`
-- `JWT__Issuer`, `JWT__Audience`, `JWT__Key`
-- `ConnectionStrings__Default`
-- `Redis__ConnectionString`
-- `SMTP__Host`, `SMTP__Port`, `SMTP__User`, `SMTP__Pass`, `SMTP__From`, `SMTP__FromName`
-- `UPLOADS__Path`, `UPLOADS__MaxMb`, `UPLOADS__MaxAttachmentMb`
-- `AI__Provider`
-- `GROQ__ApiKey`, `GROQ__Model`, `GROQ__BaseUrl`, `GROQ__MaxImageMb`
-- `OPENAI__ApiKey`, `OPENAI__Model`, `OPENAI__BaseUrl`
-- `ANTHROPIC__ApiKey`, `ANTHROPIC__Model`, `ANTHROPIC__BaseUrl`, `ANTHROPIC__Version`, `ANTHROPIC__MaxTokens`
-- `ADMIN__SeedEmail`, `ADMIN__SeedPassword`
-
-### Ejemplos de chatbot
-
-Groq:
-
-```env
-AI__Provider=groq
-GROQ__ApiKey=tu_api_key
-GROQ__Model=meta-llama/llama-4-scout-17b-16e-instruct
-GROQ__BaseUrl=https://api.groq.com/openai/v1
-GROQ__MaxImageMb=4
-```
-
-OpenRouter:
-
-```env
-AI__Provider=openrouter
-OPENAI__ApiKey=sk-or-v1-...
-OPENAI__BaseUrl=https://openrouter.ai/api/v1
-OPENAI__Model=openrouter/free
-```
-
-OpenAI:
-
-```env
-AI__Provider=openai
-OPENAI__ApiKey=sk-...
-OPENAI__Model=gpt-4o-mini
-OPENAI__BaseUrl=https://api.openai.com/v1
-```
-
-Anthropic:
-
-```env
-AI__Provider=anthropic
-ANTHROPIC__ApiKey=sk-ant-...
-ANTHROPIC__Model=claude-3-5-sonnet-latest
-ANTHROPIC__BaseUrl=https://api.anthropic.com/v1
-ANTHROPIC__Version=2023-06-01
-ANTHROPIC__MaxTokens=1024
-```
-
-## Desarrollo local
-
-```bash
-docker compose up -d --build
-```
-
-URLs:
-
-- Frontend: `http://localhost:5173`
-- API: `http://localhost:8080`
-- Swagger: `http://localhost:8080/swagger`
-
-## Produccion
-
-```bash
-docker compose -f docker-compose.prod.yml up -d --build
-```
-
-Servicios:
-
-- `caddy` expone `80/443`
-- `api`, `web`, `db` y `redis` quedan en red interna
 
 ## Endpoints principales
 
@@ -165,22 +80,35 @@ Uploads:
 - `POST /api/uploads/message-attachment`
 - `POST /api/profile/image`
 
-## Desarrollo fuera de Docker
+Admin:
+- `GET /api/admin/users?page=1&pageSize=20&search=`
+- `GET /api/admin/users/{id}`
+- `POST /api/admin/users/{id}/block`
+- `POST /api/admin/users/{id}/unblock`
+- `POST /api/admin/users/{id}/force-reset-password`
+- `POST /api/admin/users/{id}/resend-verification`
+- `POST /api/admin/users/{id}/set-role`
 
-Backend:
+## Rutas frontend
 
-```bash
-dotnet build backend/HablaMas.sln
-```
+- `/register`
+- `/verify-email`
+- `/login`
+- `/change-password`
+- `/forgot-password`
+- `/reset-password`
+- `/app`
+- `/chatbot`
+- `/admin`
+- `/admin/users`
+- `/admin/users/:id`
 
-Frontend:
+## Seguridad y validaciones
 
-```bash
-cd frontend
-npm install
-npm run build
-```
-
-## Seed admin
-
-Si `ADMIN__SeedEmail` y `ADMIN__SeedPassword` existen al iniciar la API, se crea el usuario administrador.
+- Passwords nunca se muestran ni se almacenan en texto plano.
+- Flujos de "recuperar"/"forzar" usan reset token o nueva temporal.
+- JWT + refresh tokens persistidos.
+- Rol Admin protegido por `[Authorize(Roles = "Admin")]`.
+- Uploads restringidos a jpg/png/webp y max 5MB.
+- Usuarios bloqueados no pueden autenticarse para operar.
+- Usuarios sin email confirmado o con password temporal pendiente no pueden usar chat (hub/app).
