@@ -79,14 +79,6 @@ interface AvatarProps {
   size?: "md" | "lg";
 }
 
-interface SidebarNavButtonProps {
-  active?: boolean;
-  badge?: ReactNode;
-  icon: ReactNode;
-  label: string;
-  onClick: () => void;
-}
-
 interface SidebarFooterButtonProps {
   icon: ReactNode;
   label: string;
@@ -559,35 +551,6 @@ function Avatar({ name, src, online, size = "md" }: AvatarProps) {
   );
 }
 
-function SidebarNavButton({
-  active,
-  badge,
-  icon,
-  label,
-  onClick
-}: SidebarNavButtonProps) {
-  return (
-    <button
-      aria-label={label}
-      className={clsx(
-        "group inline-flex min-w-0 items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium transition",
-        active
-          ? "bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.18)]"
-          : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
-      )}
-      onClick={onClick}
-      type="button"
-    >
-      <span className="shrink-0">{icon}</span>
-      <span className="truncate">{label}</span>
-      {badge ? (
-        <span className="ml-auto inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
-          {badge}
-        </span>
-      ) : null}
-    </button>
-  );
-}
 
 function SidebarFooterButton({
   icon,
