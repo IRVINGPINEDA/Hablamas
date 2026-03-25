@@ -20,7 +20,7 @@ public sealed class AuthPage : ContentPage
     private readonly Button _submitButton;
     private bool _registerMode;
 
-    public AuthPage(HablaMasApiClient apiClient, AppSession session)
+    public AuthPage(HablaMasApiClient apiClient)
     {
         _apiClient = apiClient;
         Title = "Habla Mas";
@@ -66,7 +66,7 @@ public sealed class AuthPage : ContentPage
 
         var helperLabel = new Label
         {
-            Text = "Conecta con la misma API de la version web y entra directo al flujo del usuario.",
+            Text = "Conectado a la misma API de la version web.",
             FontSize = 14
         };
         MobileTheme.StyleMutedText(helperLabel);

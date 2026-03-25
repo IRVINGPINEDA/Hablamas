@@ -20,8 +20,8 @@ export function AuthShell({ title, subtitle, accent = "Acceso seguro", children 
       <div className="soft-grid pointer-events-none absolute inset-0 opacity-60" />
       <div className="pointer-events-none absolute inset-x-0 top-0 h-64 bg-[radial-gradient(circle_at_top,_rgba(95,120,136,0.22),_transparent_60%)]" />
 
-      <div className="relative mx-auto grid min-h-[calc(100vh-3rem)] max-w-7xl gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-        <section className="surface-panel relative overflow-hidden px-5 py-6 sm:px-8 sm:py-8 lg:px-10 lg:py-10">
+      <div className="relative mx-auto flex min-h-[calc(100vh-3rem)] max-w-7xl gap-5 lg:grid lg:grid-cols-[1.05fr_0.95fr]">
+        <section className="surface-panel relative hidden overflow-hidden px-5 py-6 sm:px-8 sm:py-8 lg:block lg:px-10 lg:py-10">
           <div className="absolute inset-x-0 top-0 h-36 bg-[radial-gradient(circle_at_top_left,_rgba(14,165,233,0.18),_transparent_65%)]" />
           <div className="relative flex h-full flex-col justify-between gap-8">
             <div className="max-w-xl">
@@ -51,7 +51,7 @@ export function AuthShell({ title, subtitle, accent = "Acceso seguro", children 
           </div>
         </section>
 
-        <section className="surface-panel flex items-center justify-center px-3 py-4 sm:px-5 sm:py-5">
+        <section className="surface-panel flex w-full items-center justify-center px-3 py-4 sm:px-5 sm:py-5">
           <div className="w-full max-w-xl">
             <div className="mb-6 px-2 sm:hidden">
               <p className="eyebrow-label">{accent}</p>

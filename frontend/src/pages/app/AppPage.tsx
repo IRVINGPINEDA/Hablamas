@@ -1,4 +1,5 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import type { ChangeEvent, FormEvent, ReactNode, RefObject } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
 import { Link } from "react-router-dom";
@@ -34,20 +35,386 @@ interface UploadedAttachment {
   attachmentSizeBytes?: number;
 }
 
-type ChatRenderableMessage = Pick<MessageDto, "id" | "type" | "text" | "imageUrl" | "attachmentUrl" | "attachmentName" | "attachmentContentType" | "attachmentSizeBytes" | "createdAt">;
-
+type ChatRenderableMessage = Pick<
+  MessageDto,
+  | "id"
+  | "type"
+  | "text"
+  | "imageUrl"
+  | "attachmentUrl"
+  | "attachmentName"
+  | "attachmentContentType"
+  | "attachmentSizeBytes"
+  | "createdAt"
+>;
 type Panel = "chats" | "groups" | "contacts" | "profile";
+type ThemeMode = "light" | "dark";
+type InboxFilter = "all" | "chats" | "groups";
 
+type SidebarThreadItem =
+  | {
+      kind: "chat";
+      id: string;
+      name: string;
+      preview: string;
+      previewDate: string;
+      profileImageUrl?: string;
+      online: boolean;
+      unreadCount: number;
+    }
+  | {
+      kind: "group";
+      id: string;
+      name: string;
+      preview: string;
+      previewDate: string;
+      memberCount: number;
+    };
 
-const panelLabels: Record<Panel, string> = {
-  chats: "Chats",
-  groups: "Grupos",
-  contacts: "Contactos",
-  profile: "Perfil"
-};
+interface IconProps {
+  className?: string;
+}
 
-const MESSAGE_WRAP_LENGTH = 50;
-const ATTACHMENT_ACCEPT = "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
+interface AvatarProps {
+  name: string;
+  src?: string;
+  online?: boolean;
+  size?: "md" | "lg";
+}
+
+interface SidebarFooterButtonProps {
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+interface RailButtonProps {
+  active?: boolean;
+  badge?: ReactNode;
+  icon: ReactNode;
+  label: string;
+  onClick: () => void;
+}
+
+interface ChatFilterChipProps {
+  active: boolean;
+  label: string;
+  onClick: () => void;
+}
+
+interface ChatHeaderProps {
+  aside?: ReactNode;
+  avatar: ReactNode;
+  eyebrow: string;
+  leadingAction?: ReactNode;
+  statusRow?: ReactNode;
+  subtitle: ReactNode;
+  title: string;
+}
+
+interface MessageViewportProps {
+  bottomRef: RefObject<HTMLDivElement | null>;
+  children: ReactNode;
+  contentRef: RefObject<HTMLDivElement | null>;
+  emptyState: ReactNode;
+  onScroll: () => void;
+  scrollAction?: ReactNode;
+  viewportRef: RefObject<HTMLDivElement | null>;
+}
+
+interface MessageBubbleProps {
+  message: ChatRenderableMessage;
+  meta: ReactNode;
+  own: boolean;
+  renderContent: (message: ChatRenderableMessage) => ReactNode;
+  senderLabel?: string;
+}
+
+interface MessageComposerProps {
+  attachmentAccept: string;
+  canSend: boolean;
+  disabled: boolean;
+  inputValue: string;
+  isRecordingVoice: boolean;
+  onAttachment: (event: ChangeEvent<HTMLInputElement>) => void;
+  onChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onToggleVoice: () => void;
+  placeholder: string;
+}
+
+const THEME_STORAGE_KEY = "hablamas_app_theme";
+const ATTACHMENT_ACCEPT =
+  "image/png,image/jpeg,image/webp,video/mp4,video/webm,video/quicktime,audio/aac,audio/mp4,audio/mpeg,audio/ogg,audio/wav,audio/webm,.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.json,.zip,.rar,.rtf";
+
+function ChatIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M8 10h8M8 14h5m-7 6 2.8-3.2A3 3 0 0 1 11 16h7a3 3 0 0 0 3-3V6a3 3 0 0 0-3-3H6A3 3 0 0 0 3 6v7a3 3 0 0 0 3 3v4Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function GroupIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M16 21v-2a4 4 0 0 0-4-4H7a4 4 0 0 0-4 4v2m18 0v-2a4 4 0 0 0-3-3.87M13 7a4 4 0 1 1-8 0 4 4 0 0 1 8 0Zm8 2a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function ContactIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M20 21a8 8 0 1 0-16 0m12-11a4 4 0 1 1-8 0 4 4 0 0 1 8 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function BotIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M9 3h6m-3 0v4m-7 4h14m-1 10H6a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2ZM9 15h.01M15 15h.01"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SunIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 3v2.25M12 18.75V21M4.97 4.97l1.6 1.6m10.86 10.86 1.6 1.6M3 12h2.25m13.5 0H21M4.97 19.03l1.6-1.6m10.86-10.86 1.6-1.6M15.75 12A3.75 3.75 0 1 1 12 8.25 3.75 3.75 0 0 1 15.75 12Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function MoonIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function MenuIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M4 7h16M4 12h16M4 17h16"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function PlusIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 5v14M5 12h14"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function ChevronDownIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m7 10 5 5 5-5"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function StatusChecks({
+  className,
+  status
+}: {
+  className?: string;
+  status: "Sent" | "Delivered" | "Seen";
+}) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 20 20">
+      <path
+        d="m4.5 10.2 2.1 2.1 4.1-4.8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+      {status !== "Sent" ? (
+        <path
+          d="m9.2 10.2 2.1 2.1 4.1-4.8"
+          stroke="currentColor"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          strokeWidth="1.8"
+        />
+      ) : null}
+    </svg>
+  );
+}
+
+function SearchIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m21 21-4.35-4.35m1.85-5.15a7 7 0 1 1-14 0 7 7 0 0 1 14 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SettingsIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m10.33 4.32 1.15-1.93a.6.6 0 0 1 1.04 0l1.15 1.93a.6.6 0 0 0 .72.27l2.16-.7a.6.6 0 0 1 .77.48l.3 2.22a.6.6 0 0 0 .48.51l2.2.42a.6.6 0 0 1 .34.98l-1.49 1.67a.6.6 0 0 0-.1.67l1 2a.6.6 0 0 1-.43.86l-2.2.42a.6.6 0 0 0-.48.51l-.3 2.22a.6.6 0 0 1-.77.48l-2.16-.7a.6.6 0 0 0-.72.27l-1.15 1.93a.6.6 0 0 1-1.04 0l-1.15-1.93a.6.6 0 0 0-.72-.27l-2.16.7a.6.6 0 0 1-.77-.48l-.3-2.22a.6.6 0 0 0-.48-.51l-2.2-.42a.6.6 0 0 1-.43-.86l1-2a.6.6 0 0 0-.1-.67L2.36 8.5a.6.6 0 0 1 .34-.98l2.2-.42a.6.6 0 0 0 .48-.51l.3-2.22a.6.6 0 0 1 .77-.48l2.16.7a.6.6 0 0 0 .72-.27Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M15 12a3 3 0 1 1-6 0 3 3 0 0 1 6 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function LogoutIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M15 17l5-5-5-5M20 12H9m5 8H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h8"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function DotsIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="currentColor" viewBox="0 0 24 24">
+      <circle cx="5" cy="12" r="1.8" />
+      <circle cx="12" cy="12" r="1.8" />
+      <circle cx="19" cy="12" r="1.8" />
+    </svg>
+  );
+}
+
+function InfoIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M12 8h.01M10.75 12h1.25v4h1.25M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SmileIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="M8.5 14.5s1.35 1.5 3.5 1.5 3.5-1.5 3.5-1.5M9 9.5h.01M15 9.5h.01M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function SendIcon({ className }: IconProps) {
+  return (
+    <svg aria-hidden="true" className={className} fill="none" viewBox="0 0 24 24">
+      <path
+        d="m3 20 18-8L3 4v6l10 2-10 2v6Z"
+        stroke="currentColor"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}
+
+function getStoredTheme(): ThemeMode | null {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const stored = window.localStorage.getItem(THEME_STORAGE_KEY);
+  return stored === "dark" || stored === "light" ? stored : null;
+}
+
+function toThemeNumber(mode: ThemeMode): number {
+  return mode === "dark" ? 2 : 1;
+}
 
 function getInitials(name: string): string {
   return name
@@ -56,28 +423,6 @@ function getInitials(name: string): string {
     .slice(0, 2)
     .map((part) => part[0]?.toUpperCase() ?? "")
     .join("");
-}
-
-function wrapMessageText(text?: string): string {
-  if (!text) {
-    return "";
-  }
-
-  return text
-    .split("\n")
-    .map((line) => {
-      if (line.length <= MESSAGE_WRAP_LENGTH) {
-        return line;
-      }
-
-      const chunks: string[] = [];
-      for (let index = 0; index < line.length; index += MESSAGE_WRAP_LENGTH) {
-        chunks.push(line.slice(index, index + MESSAGE_WRAP_LENGTH));
-      }
-
-      return chunks.join("\n");
-    })
-    .join("\n");
 }
 
 function formatBytes(bytes?: number): string {
@@ -97,15 +442,32 @@ function formatBytes(bytes?: number): string {
   return `${value.toFixed(value >= 10 || unitIndex === 0 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
-function formatRelativeDate(value?: string): string {
+function formatMessageTime(value: string): string {
+  return new Date(value).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit"
+  });
+}
+
+function formatSidebarTime(value?: string): string {
   if (!value) {
-    return "Aun no se ha usado";
+    return "";
   }
 
   const date = new Date(value);
-  return date.toLocaleString("es-MX", {
-    dateStyle: "medium",
-    timeStyle: "short"
+  const now = new Date();
+  const sameDay =
+    date.getFullYear() === now.getFullYear() &&
+    date.getMonth() === now.getMonth() &&
+    date.getDate() === now.getDate();
+
+  if (sameDay) {
+    return formatMessageTime(value);
+  }
+
+  return date.toLocaleDateString([], {
+    day: "numeric",
+    month: "short"
   });
 }
 
@@ -129,7 +491,11 @@ function getAttachmentUrl(message: ChatAttachmentDto): string | undefined {
   return message.attachmentUrl || message.imageUrl;
 }
 
-function getMessagePreview(message?: { type: ChatMessageType; text?: string; attachmentName?: string }): string {
+function getMessagePreview(message?: {
+  type: ChatMessageType;
+  text?: string;
+  attachmentName?: string;
+}): string {
   if (!message) {
     return "Sin mensajes";
   }
@@ -153,9 +519,365 @@ function getMessagePreview(message?: { type: ChatMessageType; text?: string; att
   return message.attachmentName ? `[archivo] ${message.attachmentName}` : "[archivo]";
 }
 
-export function AppPage( ) {
+function Avatar({ name, src, online, size = "md" }: AvatarProps) {
+  const sizeClasses = size === "lg" ? "h-14 w-14 text-sm" : "h-11 w-11 text-xs";
+  const dotClasses = size === "lg" ? "h-3.5 w-3.5" : "h-3 w-3";
+
+  return (
+    <div className="relative shrink-0">
+      {src ? (
+        <img
+          alt={name}
+          className={clsx(sizeClasses, "rounded-full object-cover ring-2 ring-white/40")}
+          src={src}
+        />
+      ) : (
+        <div
+          className={clsx(
+            sizeClasses,
+            "flex items-center justify-center rounded-full bg-brand-100 font-semibold text-brand-700 ring-2 ring-white/40"
+          )}
+        >
+          {getInitials(name)}
+        </div>
+      )}
+      {typeof online === "boolean" ? (
+        <span
+          className={clsx(
+            dotClasses,
+            "absolute bottom-0 right-0 rounded-full border-2 border-[var(--surface-bg-strong)]",
+            online ? "bg-emerald-500" : "bg-slate-400"
+          )}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+
+function SidebarFooterButton({
+  icon,
+  label,
+  onClick
+}: SidebarFooterButtonProps) {
+  return (
+    <button
+      className="inline-flex items-center gap-2 rounded-xl px-3 py-2 text-sm font-medium text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
+      type="button"
+    >
+      <span className="shrink-0">{icon}</span>
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function RailButton({ active, badge, icon, label, onClick }: RailButtonProps) {
+  return (
+    <button
+      aria-label={label}
+      className={clsx(
+        "relative flex h-11 w-11 items-center justify-center rounded-2xl transition",
+        active
+          ? "bg-[var(--chat-item-active)] text-[#25d366]"
+          : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      )}
+      onClick={onClick}
+      title={label}
+      type="button"
+    >
+      {icon}
+      {badge ? (
+        <span className="absolute -right-1 -top-1 inline-flex min-h-5 min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1 text-[10px] font-bold text-[#041b10]">
+          {badge}
+        </span>
+      ) : null}
+    </button>
+  );
+}
+
+function ChatFilterChip({ active, label, onClick }: ChatFilterChipProps) {
+  return (
+    <button
+      className={clsx(
+        "rounded-full px-3 py-1.5 text-xs font-semibold transition",
+        active
+          ? "bg-[#103529] text-[#7df2b0] shadow-[inset_0_0_0_1px_rgba(37,211,102,0.22)]"
+          : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      )}
+      onClick={onClick}
+      type="button"
+    >
+      {label}
+    </button>
+  );
+}
+
+function HeaderActionButton({
+  icon,
+  label,
+  onClick
+}: {
+  icon: ReactNode;
+  label: string;
+  onClick?: () => void;
+}) {
+  return (
+    <button
+      aria-label={label}
+      className="flex h-9 w-9 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+      onClick={onClick}
+      type="button"
+    >
+      {icon}
+    </button>
+  );
+}
+
+function ChatHeader({
+  aside,
+  avatar,
+  eyebrow,
+  leadingAction,
+  statusRow,
+  subtitle,
+  title
+}: ChatHeaderProps) {
+  return (
+    <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-4 py-3 sm:px-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-3">
+          {leadingAction ? <div className="lg:hidden">{leadingAction}</div> : null}
+          {avatar}
+          <div className="min-w-0">
+            {eyebrow ? (
+              <p className="mb-0.5 text-[10px] font-semibold uppercase tracking-[0.16em] text-[var(--app-subtle-text)]">
+                {eyebrow}
+              </p>
+            ) : null}
+            <p className="truncate text-[15px] font-semibold text-[var(--app-text)]">{title}</p>
+            <div className="mt-0.5 text-xs text-[var(--app-subtle-text)]">{subtitle}</div>
+            {statusRow ? (
+              <div className="mt-1.5 flex flex-wrap items-center gap-2">{statusRow}</div>
+            ) : null}
+          </div>
+        </div>
+        {aside ? (
+          <div className="flex max-w-full flex-wrap items-center gap-1">{aside}</div>
+        ) : null}
+      </div>
+    </header>
+  );
+}
+
+function ScrollToBottomButton({
+  count,
+  onClick
+}: {
+  count: number;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      className="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-[#25d366] px-4 py-2 text-sm font-semibold text-[#072a18] shadow-[0_16px_30px_-20px_rgba(7,42,24,0.55)] transition hover:bg-[#20bd5c]"
+      onClick={onClick}
+      type="button"
+    >
+      <ChevronDownIcon className="h-4 w-4" />
+      <span>{count > 1 ? `${count} nuevos mensajes` : "Nuevo mensaje"}</span>
+    </button>
+  );
+}
+
+function MessageViewport({
+  bottomRef,
+  children,
+  contentRef,
+  emptyState,
+  onScroll,
+  scrollAction,
+  viewportRef
+}: MessageViewportProps) {
+  const hasContent = Array.isArray(children) ? children.length > 0 : Boolean(children);
+
+  return (
+    <section className="relative min-h-0 flex-1">
+      <div
+        className="chat-pattern min-h-0 h-full overflow-y-auto bg-[var(--chat-canvas)] px-4 py-5 sm:px-6"
+        onScroll={onScroll}
+        ref={viewportRef}
+      >
+        <div className="flex min-h-full flex-col justify-end gap-3" ref={contentRef}>
+          {hasContent ? children : emptyState}
+          <div ref={bottomRef} />
+        </div>
+      </div>
+      {scrollAction ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-10 -translate-x-1/2">
+          {scrollAction}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function MessageBubble({
+  message,
+  meta,
+  own,
+  renderContent,
+  senderLabel
+}: MessageBubbleProps) {
+  const attachment = message.type !== "text";
+
+  return (
+    <article className={clsx("flex w-full", own ? "justify-end" : "justify-start")}>
+      <div
+        className={clsx(
+          "w-fit max-w-[min(92%,44rem)] border shadow-[0_18px_30px_-24px_rgba(0,0,0,0.35)]",
+          own
+            ? "rounded-[18px] rounded-br-[6px] border-transparent bg-[linear-gradient(135deg,var(--bubble-own-from),var(--bubble-own-to))] text-[var(--bubble-own-text)]"
+            : "rounded-[18px] rounded-bl-[6px] border-[var(--bubble-peer-border)] bg-[var(--bubble-peer-bg)] text-[var(--bubble-peer-text)]",
+          attachment ? "px-3 py-3" : "px-4 py-3.5"
+        )}
+      >
+        {senderLabel ? (
+          <p className="mb-2 text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-700">
+            {senderLabel}
+          </p>
+        ) : null}
+        {renderContent(message)}
+        <div
+          className={clsx(
+            "mt-2 flex items-center gap-1 text-[10px] font-medium",
+            own
+              ? "justify-end text-[var(--bubble-own-muted)]"
+              : "justify-start text-[var(--bubble-peer-muted)]"
+          )}
+        >
+          {meta}
+        </div>
+      </div>
+    </article>
+  );
+}
+
+function MessageComposer({
+  attachmentAccept,
+  canSend,
+  disabled,
+  inputValue,
+  isRecordingVoice,
+  onAttachment,
+  onChange,
+  onSubmit,
+  onToggleVoice,
+  placeholder
+}: MessageComposerProps) {
+  return (
+    <footer className="shrink-0 border-t border-[var(--surface-border)] bg-[var(--composer-bg)] px-4 py-3 backdrop-blur-xl sm:px-5">
+      <form className="flex items-end gap-2" onSubmit={onSubmit}>
+        <button
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+          disabled={disabled}
+          type="button"
+        >
+          <SmileIcon className="h-5 w-5" />
+        </button>
+
+        <label
+          className={clsx(
+            "flex h-11 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]",
+            disabled ? "pointer-events-none opacity-60" : undefined
+          )}
+        >
+          <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <path
+              d="M12 5v14M5 12h14"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+          <input accept={attachmentAccept} className="hidden" onChange={onAttachment} type="file" />
+        </label>
+
+        <div className="flex min-w-0 flex-1 items-end rounded-[26px] bg-[var(--composer-input-bg)] px-3 py-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.04)]">
+          <textarea
+            className="max-h-32 min-h-[24px] w-full resize-none bg-transparent px-2 py-1.5 text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)] disabled:cursor-not-allowed"
+            disabled={disabled}
+            onChange={(event) => onChange(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                if (canSend && !disabled) {
+                  event.currentTarget.form?.requestSubmit();
+                }
+              }
+            }}
+            placeholder={placeholder}
+            rows={1}
+            value={inputValue}
+          />
+        </div>
+
+        <button
+          className={clsx(
+            "flex h-11 w-11 shrink-0 items-center justify-center rounded-full transition",
+            isRecordingVoice
+              ? "bg-rose-500 text-white hover:bg-rose-600"
+              : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+          )}
+          disabled={disabled}
+          onClick={onToggleVoice}
+          type="button"
+        >
+          <svg aria-hidden="true" className="h-5 w-5" fill="none" viewBox="0 0 24 24">
+            <path
+              d="M12 4a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V7a3 3 0 0 1 3-3Zm0 0v-1m0 14v4m-5-9a5 5 0 0 0 10 0"
+              stroke="currentColor"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth="1.8"
+            />
+          </svg>
+        </button>
+
+        <button
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-[#25d366] text-[#041b10] shadow-[0_16px_30px_-18px_rgba(37,211,102,0.45)] transition hover:bg-[#31e476] disabled:cursor-not-allowed disabled:opacity-60"
+          disabled={!canSend || disabled}
+          type="submit"
+        >
+          <SendIcon className="h-5 w-5" />
+        </button>
+      </form>
+    </footer>
+  );
+}
+
+function EmptyMessagingState({
+  eyebrow,
+  title,
+  description
+}: {
+  description: string;
+  eyebrow: string;
+  title: string;
+}) {
+  return (
+    <div className="m-auto max-w-md rounded-[32px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-8 text-center">
+      <p className="eyebrow-label">{eyebrow}</p>
+      <p className="mt-3 text-2xl font-bold text-[var(--app-text)]">{title}</p>
+      <p className="mt-3 text-sm leading-6 text-[var(--app-subtle-text)]">{description}</p>
+    </div>
+  );
+}
+
+export function AppPage() {
   const { user, logout, refreshProfile } = useAuth();
   const [panel, setPanel] = useState<Panel>("chats");
+  const [themeMode, setThemeMode] = useState<ThemeMode>(() => getStoredTheme() ?? "dark");
   const [conversations, setConversations] = useState<ConversationSummary[]>([]);
   const [contacts, setContacts] = useState<ContactDto[]>([]);
   const [groupChats, setGroupChats] = useState<GroupChatSummary[]>([]);
@@ -166,16 +888,25 @@ export function AppPage( ) {
   const [groupMembers, setGroupMembers] = useState<GroupMemberDto[]>([]);
   const [typingByConversation, setTypingByConversation] = useState<Record<string, string>>({});
   const [presenceByUser, setPresenceByUser] = useState<Record<string, boolean>>({});
+  const [unreadByConversation, setUnreadByConversation] = useState<Record<string, number>>({});
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
+  const [inboxFilter, setInboxFilter] = useState<InboxFilter>("chats");
   const [messageInput, setMessageInput] = useState("");
-  const [connectionState, setConnectionState] = useState<HubConnectionState>(HubConnectionState.Disconnected);
+  const [connectionState, setConnectionState] = useState<HubConnectionState>(
+    HubConnectionState.Disconnected
+  );
   const [addingCode, setAddingCode] = useState("");
   const [newGroupName, setNewGroupName] = useState("");
   const [selectedGroupMemberIds, setSelectedGroupMemberIds] = useState<string[]>([]);
   const [isRecordingVoice, setIsRecordingVoice] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [showGroupCreator, setShowGroupCreator] = useState(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
+  const [pendingNewMessageCount, setPendingNewMessageCount] = useState(0);
   const [profile, setProfile] = useState<ProfileForm>({
     bio: "",
     publicAlias: "",
-    theme: 1,
+    theme: toThemeNumber(themeMode),
     accentColor: "#5f7888"
   });
   const [passkeys, setPasskeys] = useState<PasskeyCredentialSummary[]>([]);
@@ -195,6 +926,13 @@ export function AppPage( ) {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const mediaStreamRef = useRef<MediaStream | null>(null);
   const voiceChunksRef = useRef<Blob[]>([]);
+  const messagesContainerRef = useRef<HTMLDivElement | null>(null);
+  const messagesContentRef = useRef<HTMLDivElement | null>(null);
+  const bottomRef = useRef<HTMLDivElement | null>(null);
+  const previousThreadKeyRef = useRef("");
+  const previousMessageCountRef = useRef(0);
+  const forceScrollRef = useRef(false);
+  const stickToBottomRef = useRef(true);
 
   const currentConversation = useMemo(
     () => conversations.find((conversation) => conversation.id === selectedConversationId) ?? null,
@@ -211,6 +949,93 @@ export function AppPage( ) {
     [contacts, presenceByUser]
   );
 
+  const messagingPanel = panel === "chats" || panel === "groups";
+  const composerEnabled = panel === "groups" ? Boolean(currentGroup) : Boolean(currentConversation);
+  const canSendMessage = messageInput.trim().length > 0;
+
+  const activeMessages = useMemo(
+    () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
+    [groupMessages, messages, panel]
+  );
+
+  const inboxThreads = useMemo<SidebarThreadItem[]>(() => {
+    const query = chatSearchQuery.trim().toLowerCase();
+
+    const chatItems: SidebarThreadItem[] = conversations.map((conversation) => ({
+      id: conversation.id,
+      kind: "chat",
+      name: conversation.contact.alias || conversation.contact.publicAlias,
+      online: Boolean(presenceByUser[conversation.contact.id]),
+      preview: getMessagePreview(conversation.lastMessage),
+      previewDate: conversation.lastMessageAt ?? conversation.createdAt,
+      profileImageUrl: conversation.contact.profileImageUrl,
+      unreadCount: unreadByConversation[conversation.id] ?? 0
+    }));
+
+    const groupItems: SidebarThreadItem[] = groupChats.map((group) => ({
+      id: group.id,
+      kind: "group",
+      name: group.name,
+      memberCount: group.memberCount,
+      preview: getMessagePreview(group.lastMessage),
+      previewDate: group.lastMessageAt ?? group.createdAt
+    }));
+
+    return [...chatItems, ...groupItems]
+      .filter((item) => {
+        if (inboxFilter === "chats" && item.kind !== "chat") {
+          return false;
+        }
+
+        if (inboxFilter === "groups" && item.kind !== "group") {
+          return false;
+        }
+
+        if (query.length === 0) {
+          return true;
+        }
+
+        return (
+          item.name.toLowerCase().includes(query) || item.preview.toLowerCase().includes(query)
+        );
+      })
+      .sort(
+        (a, b) => new Date(b.previewDate).getTime() - new Date(a.previewDate).getTime()
+      );
+  }, [chatSearchQuery, conversations, groupChats, inboxFilter, presenceByUser, unreadByConversation]);
+
+  const activeThreadKey = useMemo(
+    () =>
+      panel === "groups"
+        ? `group:${selectedGroupId ?? "none"}`
+        : panel === "chats"
+          ? `chat:${selectedConversationId ?? "none"}`
+          : panel,
+    [panel, selectedConversationId, selectedGroupId]
+  );
+
+  const applyThemeMode = (mode: ThemeMode): void => {
+    setThemeMode(mode);
+    setProfile((prev) => ({ ...prev, theme: toThemeNumber(mode) }));
+  };
+
+  const isNearBottom = (): boolean => {
+    const container = messagesContainerRef.current;
+    if (!container) {
+      return true;
+    }
+
+    const distance = container.scrollHeight - container.scrollTop - container.clientHeight;
+    return distance < 120;
+  };
+
+  const scrollToBottom = (behavior: ScrollBehavior = "smooth"): void => {
+    bottomRef.current?.scrollIntoView({ behavior, block: "end" });
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
+  };
+
   useEffect(() => {
     selectedConversationRef.current = selectedConversationId;
   }, [selectedConversationId]);
@@ -219,10 +1044,129 @@ export function AppPage( ) {
     contactsRef.current = contacts;
   }, [contacts]);
 
-  useEffect(() => () => {
-    mediaRecorderRef.current?.stop();
-    mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+  useEffect(() => {
+    if (typeof document !== "undefined") {
+      document.documentElement.dataset.theme = themeMode;
+    }
+
+    if (typeof window !== "undefined") {
+      window.localStorage.setItem(THEME_STORAGE_KEY, themeMode);
+    }
+  }, [themeMode]);
+
+  useEffect(() => {
+    if (!statusText) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setStatusText(null);
+    }, 4200);
+
+    return () => window.clearTimeout(timer);
+  }, [statusText]);
+
+  useEffect(
+    () => () => {
+      mediaRecorderRef.current?.stop();
+      mediaStreamRef.current?.getTracks().forEach((track) => track.stop());
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const syncSidebarState = () => {
+      if (window.innerWidth >= 1024) {
+        setSidebarOpen(true);
+      }
+    };
+
+    syncSidebarState();
+    window.addEventListener("resize", syncSidebarState);
+
+    return () => window.removeEventListener("resize", syncSidebarState);
   }, []);
+
+  useEffect(() => {
+    if (!messagingPanel) {
+      return;
+    }
+
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
+    setShowScrollToBottom(false);
+    setPendingNewMessageCount(0);
+
+    if (typeof window !== "undefined" && window.innerWidth < 1024) {
+      setSidebarOpen(false);
+    }
+  }, [messagingPanel, selectedConversationId, selectedGroupId]);
+
+  useEffect(() => {
+    if (!selectedConversationId) {
+      return;
+    }
+
+    setUnreadByConversation((prev) => {
+      if (!(selectedConversationId in prev)) {
+        return prev;
+      }
+
+      const next = { ...prev };
+      delete next[selectedConversationId];
+      return next;
+    });
+  }, [selectedConversationId]);
+
+  useLayoutEffect(() => {
+    if (!messagingPanel) {
+      return;
+    }
+
+    const threadChanged = previousThreadKeyRef.current !== activeThreadKey;
+    const previousCount = threadChanged ? 0 : previousMessageCountRef.current;
+    const nextCount = activeMessages.length;
+    const addedMessages = Math.max(0, nextCount - previousCount);
+
+    if (forceScrollRef.current || threadChanged) {
+      scrollToBottom("auto");
+      forceScrollRef.current = false;
+    } else if (addedMessages > 0) {
+      if (stickToBottomRef.current || isNearBottom()) {
+        scrollToBottom("smooth");
+      } else {
+        setPendingNewMessageCount((prev) => prev + addedMessages);
+        setShowScrollToBottom(true);
+      }
+    }
+
+    previousThreadKeyRef.current = activeThreadKey;
+    previousMessageCountRef.current = nextCount;
+  }, [activeMessages.length, activeThreadKey, messagingPanel]);
+
+  useEffect(() => {
+    if (!messagingPanel || typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const content = messagesContentRef.current;
+    if (!content) {
+      return;
+    }
+
+    const observer = new ResizeObserver(() => {
+      if (stickToBottomRef.current) {
+        scrollToBottom("auto");
+      }
+    });
+
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, [activeThreadKey, messagingPanel]);
 
   const loadSidebar = async (): Promise<void> => {
     const [chatsResponse, contactsResponse] = await Promise.all([
@@ -252,12 +1196,16 @@ export function AppPage( ) {
 
   const loadProfile = async (): Promise<void> => {
     const response = await authApi.get("/profile/me");
+    const nextTheme =
+      getStoredTheme() ?? (Number(response.data.theme) === 1 ? "light" : "dark");
+
     setProfile({
       bio: response.data.bio ?? "",
       publicAlias: response.data.publicAlias ?? "",
-      theme: response.data.theme,
+      theme: toThemeNumber(nextTheme),
       accentColor: response.data.accentColor ?? "#5f7888"
     });
+    setThemeMode(nextTheme);
   };
 
   const loadPasskeys = async (): Promise<void> => {
@@ -279,7 +1227,10 @@ export function AppPage( ) {
 
     const last = items[items.length - 1];
     if (last) {
-      await authApi.post(`/chats/${conversationId}/mark-seen`, { lastSeenMessageId: last.id });
+      await authApi.post(`/chats/${conversationId}/mark-seen`, {
+        lastSeenMessageId: last.id
+      });
+
       const connection = connectionRef.current;
       if (connection && connection.state === HubConnectionState.Connected) {
         await connection.invoke("MarkSeen", conversationId, last.id);
@@ -325,9 +1276,11 @@ export function AppPage( ) {
       return;
     }
 
-    Promise.all([loadGroupMessages(selectedGroupId), loadGroupMembers(selectedGroupId)]).catch(() => {
-      setStatusText("No fue posible cargar el grupo.");
-    });
+    Promise.all([loadGroupMessages(selectedGroupId), loadGroupMembers(selectedGroupId)]).catch(
+      () => {
+        setStatusText("No fue posible cargar el grupo.");
+      }
+    );
   }, [selectedGroupId]);
 
   useEffect(() => {
@@ -352,6 +1305,20 @@ export function AppPage( ) {
     connectionRef.current = connection;
 
     connection.on("message:new", (payload: { conversationId: string; message: MessageDto }) => {
+      const isActiveConversation = selectedConversationRef.current === payload.conversationId;
+      const shouldFollow = isActiveConversation ? isNearBottom() : false;
+
+      if (!isActiveConversation && payload.message.senderId !== user.id) {
+        setUnreadByConversation((prev) => ({
+          ...prev,
+          [payload.conversationId]: (prev[payload.conversationId] ?? 0) + 1
+        }));
+      }
+
+      if (isActiveConversation) {
+        stickToBottomRef.current = shouldFollow;
+      }
+
       setConversations((prev) => {
         const existing = prev.find((item) => item.id === payload.conversationId);
         if (!existing) {
@@ -379,7 +1346,9 @@ export function AppPage( ) {
             : item
         );
 
-        return [...next].sort((a, b) => (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt));
+        return [...next].sort((a, b) =>
+          (b.lastMessageAt ?? b.createdAt).localeCompare(a.lastMessageAt ?? a.createdAt)
+        );
       });
 
       if (selectedConversationRef.current === payload.conversationId) {
@@ -388,45 +1357,60 @@ export function AppPage( ) {
           if (alreadyExists) {
             return prev;
           }
+
           return [...prev, payload.message];
         });
       }
     });
 
-    connection.on("message:status", (payload: { messageId?: string; status: "Sent" | "Delivered" | "Seen"; conversationId: string }) => {
-      if (selectedConversationRef.current !== payload.conversationId) {
-        return;
-      }
-
-      setMessages((prev) => {
-        if (payload.messageId) {
-          return prev.map((message) =>
-            message.id === payload.messageId ? { ...message, status: payload.status } : message
-          );
+    connection.on(
+      "message:status",
+      (payload: {
+        messageId?: string;
+        status: "Sent" | "Delivered" | "Seen";
+        conversationId: string;
+      }) => {
+        if (selectedConversationRef.current !== payload.conversationId) {
+          return;
         }
 
-        return prev.map((message) =>
-          message.senderId === user.id ? { ...message, status: payload.status } : message
-        );
-      });
-    });
+        setMessages((prev) => {
+          if (payload.messageId) {
+            return prev.map((message) =>
+              message.id === payload.messageId ? { ...message, status: payload.status } : message
+            );
+          }
 
-    connection.on("typing:update", (payload: { conversationId: string; userId: string; isTyping: boolean }) => {
-      if (!payload.isTyping) {
-        setTypingByConversation((prev) => {
-          const copy = { ...prev };
-          delete copy[payload.conversationId];
-          return copy;
+          return prev.map((message) =>
+            message.senderId === user.id ? { ...message, status: payload.status } : message
+          );
         });
-        return;
       }
+    );
 
-      const contact = contactsRef.current.find((item) => item.contactUser.id === payload.userId);
-      setTypingByConversation((prev) => ({
-        ...prev,
-        [payload.conversationId]: contact?.alias || contact?.contactUser.publicAlias || "Escribiendo"
-      }));
-    });
+    connection.on(
+      "typing:update",
+      (payload: { conversationId: string; userId: string; isTyping: boolean }) => {
+        if (!payload.isTyping) {
+          setTypingByConversation((prev) => {
+            const copy = { ...prev };
+            delete copy[payload.conversationId];
+            return copy;
+          });
+          return;
+        }
+
+        const contact = contactsRef.current.find(
+          (item) => item.contactUser.id === payload.userId
+        );
+
+        setTypingByConversation((prev) => ({
+          ...prev,
+          [payload.conversationId]:
+            contact?.alias || contact?.contactUser.publicAlias || "Escribiendo"
+        }));
+      }
+    );
 
     connection.on("presence:update", (payload: { userId: string; online: boolean }) => {
       setPresenceByUser((prev) => ({
@@ -503,7 +1487,7 @@ export function AppPage( ) {
     await Promise.all([loadGroupMessages(selectedGroupId), loadGroups()]);
   };
 
-  const sendText = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const sendText = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
     if (!messageInput.trim()) {
@@ -511,6 +1495,8 @@ export function AppPage( ) {
     }
 
     const text = messageInput.trim();
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setMessageInput("");
 
     if (panel === "groups") {
@@ -591,13 +1577,15 @@ export function AppPage( ) {
     );
   };
 
-  const sendAttachment = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const sendAttachment = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
     }
 
     try {
+      forceScrollRef.current = true;
+      stickToBottomRef.current = true;
       const uploaded = await uploadAttachment(file);
       await sendUploadedAttachment(uploaded);
       setStatusText("Adjunto enviado.");
@@ -616,7 +1604,11 @@ export function AppPage( ) {
       return;
     }
 
-    if (typeof window === "undefined" || typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+    if (
+      typeof window === "undefined" ||
+      typeof MediaRecorder === "undefined" ||
+      !navigator.mediaDevices?.getUserMedia
+    ) {
       setStatusText("Tu navegador no soporta notas de voz.");
       return;
     }
@@ -636,9 +1628,9 @@ export function AppPage( ) {
       ? new MediaRecorder(stream, { mimeType: supportedMimeType })
       : new MediaRecorder(stream);
 
-    recorder.ondataavailable = (event) => {
-      if (event.data.size > 0) {
-        voiceChunksRef.current.push(event.data);
+    recorder.ondataavailable = (recordedEvent) => {
+      if (recordedEvent.data.size > 0) {
+        voiceChunksRef.current.push(recordedEvent.data);
       }
     };
 
@@ -666,11 +1658,9 @@ export function AppPage( ) {
         return;
       }
 
-      const voiceFile = new File(
-        [blob],
-        `nota-de-voz-${Date.now()}${getVoiceExtension(contentType)}`,
-        { type: contentType }
-      );
+      const voiceFile = new File([blob], `nota-de-voz-${Date.now()}${getVoiceExtension(contentType)}`, {
+        type: contentType
+      });
 
       uploadAttachment(voiceFile)
         .then(sendUploadedAttachment)
@@ -682,11 +1672,13 @@ export function AppPage( ) {
 
     recorder.start(250);
     mediaRecorderRef.current = recorder;
+    forceScrollRef.current = true;
+    stickToBottomRef.current = true;
     setIsRecordingVoice(true);
     setStatusText("Grabando nota de voz...");
   };
 
-  const addContactByCode = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const addContactByCode = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
     if (!addingCode.trim()) {
@@ -712,7 +1704,7 @@ export function AppPage( ) {
     );
   };
 
-  const createGroup = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const createGroup = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
     if (!newGroupName.trim()) {
@@ -729,10 +1721,12 @@ export function AppPage( ) {
     await loadGroups();
     setSelectedGroupId(response.data.id as string);
     setPanel("groups");
+    setInboxFilter("groups");
+    setShowGroupCreator(false);
     setStatusText("Grupo creado.");
   };
 
-  const saveProfile = async (event: React.FormEvent<HTMLFormElement>): Promise<void> => {
+  const saveProfile = async (event: FormEvent<HTMLFormElement>): Promise<void> => {
     event.preventDefault();
 
     await authApi.put("/profile/me", profile);
@@ -740,64 +1734,7 @@ export function AppPage( ) {
     setStatusText("Perfil actualizado.");
   };
 
-  const createPasskey = async (): Promise<void> => {
-    setPasskeyBusy(true);
-
-    try {
-      const message = await registerCurrentPasskey(newPasskeyName);
-      setNewPasskeyName("");
-      await Promise.all([loadPasskeys(), refreshProfile()]);
-      setStatusText(message);
-    } catch (error: unknown) {
-      setStatusText(getPasskeyErrorMessage(error, "No fue posible registrar la clave segura."));
-    } finally {
-      setPasskeyBusy(false);
-    }
-  };
-
-  const deletePasskey = async (passkeyId: string): Promise<void> => {
-    setPasskeyRemovingId(passkeyId);
-
-    try {
-      const message = await removePasskeyCredential(passkeyId);
-      await Promise.all([loadPasskeys(), refreshProfile()]);
-      setStatusText(message);
-    } catch (error: unknown) {
-      setStatusText(getPasskeyErrorMessage(error, "No fue posible eliminar la clave segura."));
-    } finally {
-      setPasskeyRemovingId(null);
-    }
-  };
-
-  const activatePush = async (): Promise<void> => {
-    setPushBusy(true);
-
-    try {
-      const message = await enablePushNotifications();
-      await loadPushStatus();
-      setStatusText(message);
-    } catch (error: unknown) {
-      setStatusText(getPushNotificationErrorMessage(error, "No fue posible activar las notificaciones push."));
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const deactivatePush = async (): Promise<void> => {
-    setPushBusy(true);
-
-    try {
-      const message = await disablePushNotifications();
-      await loadPushStatus();
-      setStatusText(message);
-    } catch (error: unknown) {
-      setStatusText(getPushNotificationErrorMessage(error, "No fue posible desactivar las notificaciones push."));
-    } finally {
-      setPushBusy(false);
-    }
-  };
-
-  const uploadProfileImage = async (event: React.ChangeEvent<HTMLInputElement>): Promise<void> => {
+  const uploadProfileImage = async (event: ChangeEvent<HTMLInputElement>): Promise<void> => {
     const file = event.target.files?.[0];
     if (!file) {
       return;
@@ -820,8 +1757,12 @@ export function AppPage( ) {
 
     if (message.type === "image" && attachmentUrl) {
       return (
-        <a href={attachmentUrl} target="_blank" rel="noreferrer" className="block">
-          <img alt={message.attachmentName || "Imagen"} className="h-auto max-h-64 w-auto max-w-[220px] rounded-xl object-cover sm:max-w-[320px]" src={attachmentUrl} />
+        <a className="block" href={attachmentUrl} rel="noreferrer" target="_blank">
+          <img
+            alt={message.attachmentName || "Imagen"}
+            className="h-auto max-h-72 w-auto max-w-[min(100%,22rem)] rounded-2xl object-cover"
+            src={attachmentUrl}
+          />
         </a>
       );
     }
@@ -829,8 +1770,8 @@ export function AppPage( ) {
     if (message.type === "video" && attachmentUrl) {
       return (
         <video
+          className="h-auto max-h-80 w-auto max-w-[min(100%,24rem)] rounded-2xl bg-black"
           controls
-          className="h-auto max-h-72 w-auto max-w-[240px] rounded-xl bg-black sm:max-w-[360px]"
           preload="metadata"
           src={attachmentUrl}
         />
@@ -839,10 +1780,12 @@ export function AppPage( ) {
 
     if (message.type === "audio" && attachmentUrl) {
       return (
-        <div className="min-w-[220px] max-w-[320px] space-y-2">
+        <div className="min-w-[220px] max-w-[min(100%,24rem)] space-y-2">
           <p className="text-xs font-medium">{message.attachmentName || "Nota de voz"}</p>
-          <audio controls className="w-full" preload="metadata" src={attachmentUrl} />
-          {message.attachmentSizeBytes ? <p className="text-[11px] opacity-80">{formatBytes(message.attachmentSizeBytes)}</p> : null}
+          <audio className="w-full" controls preload="metadata" src={attachmentUrl} />
+          {message.attachmentSizeBytes ? (
+            <p className="text-[11px] opacity-80">{formatBytes(message.attachmentSizeBytes)}</p>
+          ) : null}
         </div>
       );
     }
@@ -850,101 +1793,169 @@ export function AppPage( ) {
     if (message.type === "file" && attachmentUrl) {
       return (
         <a
+          className="block min-w-[220px] max-w-[min(100%,24rem)] rounded-2xl border border-current/15 bg-black/5 px-4 py-3"
           href={attachmentUrl}
-          target="_blank"
           rel="noreferrer"
-          className="block min-w-[220px] max-w-[320px] rounded-xl border border-current/15 bg-black/5 px-4 py-3 no-underline"
+          target="_blank"
         >
           <p className="text-xs uppercase tracking-wide opacity-70">Archivo</p>
-          <p className="mt-1 break-words font-medium">{message.attachmentName || "Descargar archivo"}</p>
+          <p className="mt-1 break-words font-medium [overflow-wrap:anywhere]">
+            {message.attachmentName || "Descargar archivo"}
+          </p>
           <p className="mt-1 text-[11px] opacity-80">
-            {[message.attachmentContentType, formatBytes(message.attachmentSizeBytes)].filter(Boolean).join(" | ")}
+            {[message.attachmentContentType, formatBytes(message.attachmentSizeBytes)]
+              .filter(Boolean)
+              .join(" | ")}
           </p>
         </a>
       );
     }
 
-    return <p className="whitespace-pre-wrap break-words">{wrapMessageText(message.text)}</p>;
+    return (
+      <p className="max-w-[60ch] whitespace-pre-wrap break-words leading-7 [overflow-wrap:anywhere]">
+        {message.text ?? ""}
+      </p>
+    );
   };
+
+  const handleMessagesScroll = (): void => {
+    const nearBottom = isNearBottom();
+    stickToBottomRef.current = nearBottom;
+
+    if (nearBottom) {
+      setShowScrollToBottom(false);
+      setPendingNewMessageCount(0);
+    }
+  };
+
+  const renderOwnMessageMeta = (message: MessageDto) => (
+    <>
+      <span>{formatMessageTime(message.createdAt)}</span>
+      <StatusChecks
+        className={clsx(
+          "h-3.5 w-3.5",
+          message.status === "Seen" ? "text-sky-300" : "text-[var(--bubble-own-muted)]"
+        )}
+        status={message.status}
+      />
+    </>
+  );
+
+  const mobileSidebarToggle = (
+    <button
+      aria-label="Abrir conversaciones"
+      className="inline-flex h-11 w-11 items-center justify-center rounded-2xl border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] text-[var(--app-text)] shadow-sm transition hover:border-brand-300 lg:hidden"
+      onClick={() => setSidebarOpen(true)}
+      type="button"
+    >
+      <MenuIcon className="h-5 w-5" />
+    </button>
+  );
 
   const renderChatMain = () => {
     if (!currentConversation) {
       return (
-        <div className="m-auto max-w-md text-center text-slate-500">
-          <p className="eyebrow-label">Mensajeria privada</p>
-          <p className="mt-3 text-2xl font-bold text-slate-900">Selecciona una conversacion</p>
-          <p className="mt-2 text-sm leading-6">Agrega contactos para comenzar o cambia al panel de contactos para organizar tus alias.</p>
+        <div className="flex min-h-0 flex-1">
+          <EmptyMessagingState
+            description="Agrega contactos para comenzar o cambia al panel de contactos para organizar tus alias."
+            eyebrow="Mensajeria privada"
+            title="Selecciona una conversacion"
+          />
         </div>
       );
     }
 
+    const contactName = currentConversation.contact.alias || currentConversation.contact.publicAlias;
+    const online = presenceByUser[currentConversation.contact.id];
+
     return (
       <>
-        <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="flex items-center gap-3">
-              <div className="relative">
-                {currentConversation.contact.profileImageUrl ? (
-                  <img
-                    alt={currentConversation.contact.alias || currentConversation.contact.publicAlias}
-                    className="h-14 w-14 rounded-full object-cover ring-2 ring-white"
-                    src={currentConversation.contact.profileImageUrl}
-                  />
-                ) : (
-                  <div className="flex h-14 w-14 items-center justify-center rounded-full bg-brand-100 text-sm font-semibold text-brand-700 ring-2 ring-white">
-                    {getInitials(currentConversation.contact.alias || currentConversation.contact.publicAlias)}
-                  </div>
-                )}
-                <span
-                  className={clsx(
-                    "absolute bottom-0 right-0 h-3.5 w-3.5 rounded-full border-2 border-white",
-                    presenceByUser[currentConversation.contact.id] ? "bg-emerald-500" : "bg-slate-300"
-                  )}
-                />
-              </div>
-
-              <div>
-                <p className="eyebrow-label">Chat privado</p>
-                <h2 className="mt-2 text-xl font-bold text-slate-950">{currentConversation.contact.alias || currentConversation.contact.publicAlias}</h2>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                  <span className={clsx("rounded-full px-2.5 py-1 font-semibold", presenceByUser[currentConversation.contact.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-200 text-slate-600")}>
-                    {presenceByUser[currentConversation.contact.id] ? "En linea" : "Desconectado"}
-                  </span>
-                  <span className="rounded-full bg-slate-100 px-2.5 py-1 font-semibold text-slate-600">
-                    SignalR: {HubConnectionState[connectionState]}
-                  </span>
+        <ChatHeader
+          aside={
+            <>
+              {typingByConversation[currentConversation.id] ? (
+                <div className="rounded-full bg-[#103529] px-3 py-1 text-[11px] font-semibold text-[#7df2b0]">
+                  {typingByConversation[currentConversation.id]} esta escribiendo...
                 </div>
-              </div>
-            </div>
-            {typingByConversation[currentConversation.id] ? (
-              <div className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">
-                {typingByConversation[currentConversation.id]} esta escribiendo...
-              </div>
-            ) : null}
-          </div>
-        </header>
-
-        <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
-          {messages.map((message) => {
-            const own = message.senderId === user?.id;
-            const isAttachmentMessage = message.type !== "text";
-            return (
-              <div
-                key={message.id}
+              ) : null}
+              <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar en chat" />
+              <HeaderActionButton icon={<InfoIcon className="h-5 w-5" />} label="Informacion del chat" />
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas acciones" />
+            </>
+          }
+          avatar={
+            <Avatar
+              name={contactName}
+              online={online}
+              size="lg"
+              src={currentConversation.contact.profileImageUrl}
+            />
+          }
+          eyebrow="Chat privado"
+          leadingAction={mobileSidebarToggle}
+          statusRow={
+            <>
+              <span
                 className={clsx(
-                  "max-w-[88%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[78%]",
-                  own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
-                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
+                  "rounded-full px-2.5 py-1 text-[11px] font-medium",
+                  online
+                    ? "bg-[#103529] text-[#7df2b0]"
+                    : "bg-[var(--chip-bg)] text-[var(--app-subtle-text)]"
                 )}
               >
-                {renderMessageContent(message)}
-                <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
-                  {new Date(message.createdAt).toLocaleTimeString()} {own ? `- ${message.status}` : ""}
-                </p>
-              </div>
-            );
-          })}
-        </section>
+                {online ? "En linea" : "Desconectado"}
+              </span>
+              <span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">
+                SignalR: {HubConnectionState[connectionState]}
+              </span>
+            </>
+          }
+          subtitle={
+            <p className="truncate">
+              {online ? "en linea" : "ultima actividad no disponible"} |{" "}
+              {currentConversation.contact.publicCode}
+            </p>
+          }
+          title={contactName}
+        />
+
+        <MessageViewport
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
+          emptyState={
+            <EmptyMessagingState
+              description="Todavia no hay mensajes en esta conversacion."
+              eyebrow="Mensajes"
+              title="Empieza el chat"
+            />
+          }
+          onScroll={handleMessagesScroll}
+          scrollAction={
+            showScrollToBottom ? (
+              <ScrollToBottomButton
+                count={pendingNewMessageCount}
+                onClick={() => scrollToBottom("smooth")}
+              />
+            ) : null
+          }
+          viewportRef={messagesContainerRef}
+        >
+          {messages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              meta={
+                message.senderId === user?.id ? (
+                  renderOwnMessageMeta(message)
+                ) : (
+                  <span>{formatMessageTime(message.createdAt)}</span>
+                )
+              }
+              own={message.senderId === user?.id}
+              renderContent={renderMessageContent}
+            />
+          ))}
+        </MessageViewport>
       </>
     );
   };
@@ -952,230 +1963,335 @@ export function AppPage( ) {
   const renderGroupMain = () => {
     if (!currentGroup) {
       return (
-        <div className="m-auto max-w-md text-center text-slate-500">
-          <p className="eyebrow-label">Conversaciones grupales</p>
-          <p className="mt-3 text-2xl font-bold text-slate-900">Selecciona un grupo</p>
-          <p className="mt-2 text-sm leading-6">Crea uno nuevo desde el panel lateral y agrega miembros de tus contactos.</p>
+        <div className="flex min-h-0 flex-1">
+          <EmptyMessagingState
+            description="Crea uno nuevo desde el panel lateral y agrega miembros de tus contactos."
+            eyebrow="Conversaciones grupales"
+            title="Selecciona un grupo"
+          />
         </div>
       );
     }
 
     return (
       <>
-        <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <p className="eyebrow-label">Grupo activo</p>
-              <h2 className="mt-2 text-xl font-bold text-slate-950">{currentGroup.name}</h2>
-              <p className="mt-2 text-xs text-slate-500">{groupMembers.length} miembros</p>
-            </div>
-            <div className="flex max-w-full flex-wrap gap-2">
-              {groupMembers.slice(0, 4).map((member) => (
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600" key={member.id}>
+        <ChatHeader
+          aside={
+            <>
+              {groupMembers.slice(0, 3).map((member) => (
+                <span
+                  className="rounded-full border border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] px-3 py-1 text-xs font-semibold text-[var(--app-subtle-text)]"
+                  key={member.id}
+                >
                   {member.publicAlias}
                 </span>
               ))}
-            </div>
-          </div>
-        </header>
+              <HeaderActionButton icon={<SearchIcon className="h-5 w-5" />} label="Buscar en grupo" />
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas acciones" />
+            </>
+          }
+          avatar={<Avatar name={currentGroup.name} size="lg" />}
+          eyebrow="Grupo activo"
+          leadingAction={mobileSidebarToggle}
+          statusRow={
+            <span className="rounded-full bg-[var(--chip-bg)] px-2.5 py-1 text-[11px] font-medium text-[var(--app-subtle-text)]">
+              {groupMembers.length} miembros
+            </span>
+          }
+          subtitle={<p className="truncate">Conversacion grupal compartida</p>}
+          title={currentGroup.name}
+        />
 
-        <section className="min-h-0 flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
-          {groupMessages.map((message) => {
-            const own = message.senderId === user?.id;
-            const isAttachmentMessage = message.type !== "text";
-            return (
-              <div
-                key={message.id}
-                className={clsx(
-                  "max-w-[90%] rounded-[24px] text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[82%]",
-                  own ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-800",
-                  isAttachmentMessage ? "p-2.5" : "break-words px-4 py-3.5"
-                )}
-              >
-                {!own ? <p className="mb-1 text-[11px] font-semibold uppercase tracking-wide text-brand-700">{message.senderAlias}</p> : null}
-                {renderMessageContent(message)}
-                <p className={clsx("mt-2 text-[10px] font-medium", own ? "text-brand-100" : "text-slate-500")}>
-                  {new Date(message.createdAt).toLocaleTimeString()}
-                </p>
-              </div>
-            );
-          })}
-        </section>
+        <MessageViewport
+          bottomRef={bottomRef}
+          contentRef={messagesContentRef}
+          emptyState={
+            <EmptyMessagingState
+              description="Aun no hay mensajes en este grupo."
+              eyebrow="Mensajes"
+              title="Todo listo para empezar"
+            />
+          }
+          onScroll={handleMessagesScroll}
+          scrollAction={
+            showScrollToBottom ? (
+              <ScrollToBottomButton
+                count={pendingNewMessageCount}
+                onClick={() => scrollToBottom("smooth")}
+              />
+            ) : null
+          }
+          viewportRef={messagesContainerRef}
+        >
+          {groupMessages.map((message) => (
+            <MessageBubble
+              key={message.id}
+              message={message}
+              meta={<span>{formatMessageTime(message.createdAt)}</span>}
+              own={message.senderId === user?.id}
+              renderContent={renderMessageContent}
+              senderLabel={message.senderId === user?.id ? undefined : message.senderAlias}
+            />
+          ))}
+        </MessageViewport>
       </>
     );
   };
 
   const renderSidebarContent = () => {
-    if (panel === "chats") {
-      return (
-        <div className="space-y-3">
-          {conversations.map((conversation) => (
-            <button
-              key={conversation.id}
-              className={clsx(
-                "w-full rounded-[22px] border px-4 py-3 text-left transition",
-                selectedConversationId === conversation.id ? "border-brand-300 bg-brand-50 shadow-[0_18px_26px_-24px_rgba(79,101,115,0.95)]" : "border-white/70 bg-white/85 hover:border-brand-200 hover:bg-white"
-              )}
-              onClick={() => setSelectedConversationId(conversation.id)}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <p className="text-[15px] font-medium text-slate-900">{conversation.contact.alias || conversation.contact.publicAlias}</p>
-                <span className={clsx("h-2.5 w-2.5 rounded-full", presenceByUser[conversation.contact.id] ? "bg-emerald-500" : "bg-slate-300")} />
-              </div>
-              {conversation.lastMessage ? (
-                <p className="mt-1 truncate text-xs text-slate-500">
-                  {getMessagePreview(conversation.lastMessage)}
-                </p>
-              ) : (
-                <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
-              )}
-            </button>
-          ))}
-        </div>
-      );
-    }
-
-    if (panel === "groups") {
-      return (
-        <div className="space-y-4">
-          <form className="rounded-[24px] border border-white/70 bg-white/82 p-4" onSubmit={(event) => {
-            createGroup(event).catch(() => {
-              setStatusText("No fue posible crear el grupo.");
-            });
-          }}>
-            <p className="text-xs font-semibold uppercase text-slate-500">Nuevo grupo</p>
-            <input
-              className="field-input mt-3"
-              placeholder="Nombre del grupo"
-              value={newGroupName}
-              onChange={(event) => setNewGroupName(event.target.value)}
-            />
-            <div className="mt-3 max-h-40 space-y-1 overflow-auto rounded-2xl border border-slate-200 bg-slate-50/85 p-3">
-              {contacts.length === 0 ? <p className="text-xs text-slate-500">Agrega contactos primero.</p> : null}
-              {contacts.map((contact) => (
-                <label key={contact.id} className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-slate-700 transition hover:bg-white">
-                  <input
-                    type="checkbox"
-                    checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
-                    onChange={() => toggleGroupMember(contact.contactUser.id)}
-                  />
-                  <span>{contact.alias || contact.contactUser.publicAlias}</span>
-                </label>
-              ))}
-            </div>
-            <button className="primary-button mt-3 w-full" type="submit">
-              Crear grupo
-            </button>
-          </form>
-
-          <div className="space-y-3">
-            {groupChats.map((group) => (
-              <button
-                key={group.id}
-                className={clsx(
-                  "w-full rounded-[22px] border px-4 py-3 text-left transition",
-                  selectedGroupId === group.id ? "border-brand-300 bg-brand-50 shadow-[0_18px_26px_-24px_rgba(79,101,115,0.95)]" : "border-white/70 bg-white/85 hover:border-brand-200 hover:bg-white"
-                )}
-                onClick={() => setSelectedGroupId(group.id)}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <p className="text-[15px] font-medium text-slate-900">{group.name}</p>
-                  <span className="rounded-full bg-brand-100 px-2 py-0.5 text-[10px] text-brand-700">{group.memberCount}</span>
-                </div>
-                {group.lastMessage ? (
-                  <p className="mt-1 truncate text-xs text-slate-500">{getMessagePreview(group.lastMessage)}</p>
-                ) : (
-                  <p className="mt-1 text-xs text-slate-400">Sin mensajes</p>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-      );
-    }
-
-    if (panel === "contacts") {
-      return (
-        <div className="space-y-4">
-          <article className="rounded-[24px] border border-white/70 bg-white/82 p-4">
-            <p className="eyebrow-label">Resumen</p>
-            <h3 className="mt-2 text-lg font-bold text-slate-900">Tus contactos</h3>
-            <div className="mt-4 grid grid-cols-2 gap-3 text-sm">
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <p className="text-xs uppercase text-slate-400">Total</p>
-                <p className="mt-1 text-xl font-bold text-slate-900">{contacts.length}</p>
-              </div>
-              <div className="rounded-2xl bg-slate-50 p-3">
-                <p className="text-xs uppercase text-slate-400">En linea</p>
-                <p className="mt-1 text-xl font-bold text-emerald-600">{onlineContacts}</p>
-              </div>
-            </div>
-          </article>
-
-          <article className="rounded-[24px] border border-white/70 bg-brand-50/80 p-4 text-sm leading-6 text-slate-600">
-            Usa alias locales para encontrar conversaciones mas rapido y mantener tu agenda organizada.
-          </article>
-        </div>
-      );
-    }
-
     return (
-      <div className="space-y-4">
-        <article className="rounded-[24px] border border-white/70 bg-white/82 p-4">
-          <p className="eyebrow-label">Vista rapida</p>
-          <h3 className="mt-2 text-lg font-bold text-slate-900">{profile.publicAlias || user?.publicAlias}</h3>
-          <p className="mt-2 text-sm leading-6 text-slate-500">{profile.bio || "Completa tu bio para dar contexto a otras personas."}</p>
-        </article>
-
-        <article className="rounded-[24px] border border-white/70 bg-slate-50 p-4 text-sm">
-          <p className="text-xs uppercase text-slate-400">Color de acento</p>
-          <div className="mt-3 flex items-center gap-3">
-            <span className="h-5 w-5 rounded-full border border-slate-200" style={{ backgroundColor: profile.accentColor }} />
-            <span className="font-medium text-slate-700">{profile.accentColor}</span>
+      <div className="flex min-h-0 flex-1 flex-col bg-[var(--sidebar-bg)]">
+        <div className="border-b border-[var(--surface-border)] px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <div>
+              <h2 className="text-[28px] font-semibold tracking-[-0.03em] text-[var(--app-text)]">
+                Chats
+              </h2>
+            </div>
+            <div className="flex items-center gap-1">
+              {inboxFilter !== "chats" ? (
+                <HeaderActionButton
+                  icon={<PlusIcon className="h-5 w-5" />}
+                  label="Nuevo grupo"
+                  onClick={() => setShowGroupCreator((prev) => !prev)}
+                />
+              ) : null}
+              <HeaderActionButton icon={<DotsIcon className="h-5 w-5" />} label="Mas opciones" />
+            </div>
           </div>
-        </article>
+
+          <div className="mt-4 flex items-center gap-3 rounded-full bg-[var(--search-bg)] px-4 py-3">
+            <SearchIcon className="h-4 w-4 text-[var(--app-subtle-text)]" />
+            <input
+              className="w-full bg-transparent text-sm text-[var(--app-text)] outline-none placeholder:text-[var(--input-placeholder)]"
+              onChange={(event) => setChatSearchQuery(event.target.value)}
+              placeholder="Buscar un chat o iniciar uno nuevo"
+              value={chatSearchQuery}
+            />
+          </div>
+
+          <div className="mt-4 flex flex-wrap items-center gap-2">
+            <ChatFilterChip
+              active={inboxFilter === "all"}
+              label="Todos"
+              onClick={() => {
+                setInboxFilter("all");
+                setShowGroupCreator(false);
+              }}
+            />
+            <ChatFilterChip
+              active={inboxFilter === "chats"}
+              label="Privados"
+              onClick={() => {
+                setInboxFilter("chats");
+                setShowGroupCreator(false);
+              }}
+            />
+            <ChatFilterChip
+              active={inboxFilter === "groups"}
+              label="Grupos"
+              onClick={() => setInboxFilter("groups")}
+            />
+          </div>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+          {showGroupCreator && inboxFilter !== "chats" ? (
+            <form
+              className="mx-2 mb-3 rounded-[18px] border border-[var(--surface-border)] bg-[var(--muted-card-bg)] p-4"
+              onSubmit={(event) => {
+                createGroup(event).catch(() => {
+                  setStatusText("No fue posible crear el grupo.");
+                });
+              }}
+            >
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-[var(--app-text)]">Nuevo grupo</p>
+                <button
+                  className="text-xs font-medium text-[var(--app-subtle-text)] transition hover:text-[var(--app-text)]"
+                  onClick={() => setShowGroupCreator(false)}
+                  type="button"
+                >
+                  Cerrar
+                </button>
+              </div>
+
+              <input
+                className="field-input mt-3"
+                onChange={(event) => setNewGroupName(event.target.value)}
+                placeholder="Nombre del grupo"
+                value={newGroupName}
+              />
+
+              <div className="mt-3 max-h-40 space-y-1 overflow-y-auto rounded-2xl border border-[var(--muted-card-border)] bg-[var(--surface-bg-strong)] p-3">
+                {contacts.length === 0 ? (
+                  <p className="text-xs text-[var(--app-subtle-text)]">Agrega contactos primero.</p>
+                ) : null}
+                {contacts.map((contact) => (
+                  <label
+                    className="flex items-center gap-2 rounded-xl px-2 py-1 text-xs text-[var(--app-text)] transition hover:bg-black/5"
+                    key={contact.id}
+                  >
+                    <input
+                      checked={selectedGroupMemberIds.includes(contact.contactUser.id)}
+                      onChange={() => toggleGroupMember(contact.contactUser.id)}
+                      type="checkbox"
+                    />
+                    <span>{contact.alias || contact.contactUser.publicAlias}</span>
+                  </label>
+                ))}
+              </div>
+
+              <button className="primary-button mt-3 w-full" type="submit">
+                Crear grupo
+              </button>
+            </form>
+          ) : null}
+
+          {inboxThreads.length === 0 ? (
+            <div className="mx-2 mt-2 rounded-[18px] border border-dashed border-[var(--surface-border-strong)] bg-[var(--muted-card-bg)] p-5 text-sm text-[var(--app-subtle-text)]">
+              {inboxFilter === "groups"
+                ? "No hay grupos creados todavia."
+                : inboxFilter === "chats"
+                  ? "No hay chats que coincidan con la busqueda."
+                  : "No hay conversaciones ni grupos que coincidan con la busqueda."}
+            </div>
+          ) : null}
+
+          {inboxThreads.map((item) => {
+            const selected =
+              item.kind === "chat"
+                ? panel === "chats" && selectedConversationId === item.id
+                : panel === "groups" && selectedGroupId === item.id;
+
+            const unreadCount = item.kind === "chat" ? item.unreadCount : 0;
+
+            return (
+              <button
+                className={clsx(
+                  "flex w-full items-center gap-3 rounded-2xl px-3 py-3 text-left transition",
+                  selected ? "bg-[var(--chat-item-active)]" : "hover:bg-[var(--chat-item-hover)]"
+                )}
+                key={`${item.kind}:${item.id}`}
+                onClick={() => {
+                  if (item.kind === "chat") {
+                    setPanel("chats");
+                    setSelectedConversationId(item.id);
+                  } else {
+                    setPanel("groups");
+                    setSelectedGroupId(item.id);
+                  }
+
+                  if (typeof window !== "undefined" && window.innerWidth < 1024) {
+                    setSidebarOpen(false);
+                  }
+                }}
+                type="button"
+              >
+                <Avatar
+                  name={item.name}
+                  online={item.kind === "chat" ? item.online : undefined}
+                  src={item.kind === "chat" ? item.profileImageUrl : undefined}
+                />
+
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-start justify-between gap-3">
+                    <p className="truncate text-[15px] font-medium text-[var(--app-text)]">
+                      {item.name}
+                    </p>
+                    <span
+                      className={clsx(
+                        "shrink-0 text-[11px]",
+                        unreadCount > 0 ? "text-[#25d366]" : "text-[var(--app-subtle-text)]"
+                      )}
+                    >
+                      {formatSidebarTime(item.previewDate)}
+                    </span>
+                  </div>
+
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <p
+                      className={clsx(
+                        "min-w-0 flex-1 truncate text-[13px]",
+                        unreadCount > 0 ? "text-[var(--app-text)]" : "text-[var(--app-subtle-text)]"
+                      )}
+                    >
+                      {item.preview}
+                    </p>
+
+                    {unreadCount > 0 ? (
+                      <span className="inline-flex min-w-5 items-center justify-center rounded-full bg-[#25d366] px-1.5 py-0.5 text-[10px] font-bold text-[#041b10]">
+                        {unreadCount}
+                      </span>
+                    ) : item.kind === "group" ? (
+                      <span className="rounded-full bg-[var(--chip-bg)] px-2 py-0.5 text-[10px] font-semibold text-[var(--app-subtle-text)]">
+                        {item.memberCount}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+              </button>
+            );
+          })}
+        </div>
       </div>
     );
   };
 
   const renderContactsWorkspace = () => (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
         <p className="eyebrow-label">Agenda</p>
-        <h2 className="mt-2 text-xl font-bold text-slate-950">Tus contactos</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Agrega personas por codigo y define alias locales para encontrarlas mas rapido.</p>
+        <h2 className="mt-2 text-xl font-bold text-[var(--app-text)]">Tus contactos</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">
+          Agrega personas por codigo y define alias locales para encontrarlas mas rapido.
+        </p>
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
-          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
-            addContactByCode(event).catch(() => {
-              setStatusText("No fue posible agregar el contacto.");
-            });
-          }}>
+          <form
+            className="surface-panel p-4 sm:p-5"
+            onSubmit={(event) => {
+              addContactByCode(event).catch(() => {
+                setStatusText("No fue posible agregar el contacto.");
+              });
+            }}
+          >
             <p className="eyebrow-label">Agregar contacto</p>
-            <h3 className="mt-2 text-lg font-bold text-slate-900">Invita por codigo publico</h3>
-            <p className="mt-2 text-sm text-slate-500">Comparte el codigo de la otra persona o pega uno aqui para agregarla a tu red.</p>
+            <h3 className="mt-2 text-lg font-bold text-[var(--app-text)]">
+              Invita por codigo publico
+            </h3>
+            <p className="mt-2 text-sm text-[var(--app-subtle-text)]">
+              Comparte el codigo de la otra persona o pega uno aqui para agregarla a tu red.
+            </p>
             <div className="mt-4 flex flex-col gap-3 sm:flex-row">
-              <input className="field-input" placeholder="Codigo publico" value={addingCode} onChange={(event) => setAddingCode(event.target.value.toUpperCase())} />
-              <button className="primary-button sm:min-w-36" type="submit">Agregar</button>
+              <input
+                className="field-input"
+                onChange={(event) => setAddingCode(event.target.value.toUpperCase())}
+                placeholder="Codigo publico"
+                value={addingCode}
+              />
+              <button className="primary-button sm:min-w-36" type="submit">
+                Agregar
+              </button>
             </div>
           </form>
 
           <div className="surface-panel p-4 sm:p-5">
             <p className="eyebrow-label">Estadisticas</p>
             <div className="mt-4 grid gap-3 sm:grid-cols-3">
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">Total</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{contacts.length}</p>
+              <div className="rounded-3xl border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
+                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Total</p>
+                <p className="mt-2 text-2xl font-bold text-[var(--app-text)]">{contacts.length}</p>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">En linea</p>
+              <div className="rounded-3xl border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
+                <p className="text-xs uppercase text-[var(--app-subtle-text)]">En linea</p>
                 <p className="mt-2 text-2xl font-bold text-emerald-600">{onlineContacts}</p>
               </div>
-              <div className="rounded-2xl bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">Grupos</p>
-                <p className="mt-2 text-2xl font-bold text-slate-900">{groupChats.length}</p>
+              <div className="rounded-3xl border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
+                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Grupos</p>
+                <p className="mt-2 text-2xl font-bold text-[var(--app-text)]">{groupChats.length}</p>
               </div>
             </div>
           </div>
@@ -1186,32 +2302,47 @@ export function AppPage( ) {
             <article className="surface-panel p-4 sm:p-5" key={contact.id}>
               <div className="flex items-start justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-slate-900">{contact.alias || contact.contactUser.publicAlias}</h3>
-                  <p className="mt-1 text-xs text-slate-500">Codigo: {contact.contactUser.publicCode}</p>
+                  <h3 className="text-lg font-bold text-[var(--app-text)]">
+                    {contact.alias || contact.contactUser.publicAlias}
+                  </h3>
+                  <p className="mt-1 text-xs text-[var(--app-subtle-text)]">
+                    Codigo: {contact.contactUser.publicCode}
+                  </p>
                 </div>
-                <span className={clsx("rounded-full px-2.5 py-1 text-xs font-semibold", presenceByUser[contact.contactUser.id] ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500")}>
+                <span
+                  className={clsx(
+                    "rounded-full px-2.5 py-1 text-xs font-semibold",
+                    presenceByUser[contact.contactUser.id]
+                      ? "bg-emerald-100 text-emerald-700"
+                      : "bg-[var(--muted-card-bg)] text-[var(--app-subtle-text)]"
+                  )}
+                >
                   {presenceByUser[contact.contactUser.id] ? "En linea" : "Sin conexion"}
                 </span>
               </div>
 
-              <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Alias local</label>
+              <label className="mt-4 block text-xs font-semibold uppercase tracking-[0.18em] text-[var(--app-subtle-text)]">
+                Alias local
+              </label>
               <input
                 className="field-input mt-2"
-                placeholder="Alias local"
                 defaultValue={contact.alias ?? ""}
                 onBlur={(event) => {
                   updateAlias(contact.id, event.target.value).catch(() => {
                     setStatusText("No fue posible actualizar alias.");
                   });
                 }}
+                placeholder="Alias local"
               />
             </article>
           ))}
 
           {contacts.length === 0 ? (
-            <div className="surface-panel p-6 text-center text-slate-500 md:col-span-2 2xl:col-span-3">
-              <p className="text-lg font-semibold text-slate-900">Aun no tienes contactos</p>
-              <p className="mt-2 text-sm">Agrega tu primer contacto con su codigo publico para empezar a chatear.</p>
+            <div className="surface-panel p-6 text-center text-[var(--app-subtle-text)] md:col-span-2 2xl:col-span-3">
+              <p className="text-lg font-semibold text-[var(--app-text)]">Aun no tienes contactos</p>
+              <p className="mt-2 text-sm">
+                Agrega tu primer contacto con su codigo publico para empezar a chatear.
+              </p>
             </div>
           ) : null}
         </div>
@@ -1220,61 +2351,116 @@ export function AppPage( ) {
   );
 
   const renderProfileWorkspace = () => (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <header className="shrink-0 border-b border-[var(--surface-border)] bg-[var(--surface-bg-strong)] px-5 py-4 backdrop-blur-xl sm:px-6">
         <p className="eyebrow-label">Configuracion personal</p>
-        <h2 className="mt-2 text-xl font-bold text-slate-950">Tu perfil</h2>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-500">Actualiza la informacion visible para ti y para las personas que conversan contigo.</p>
+        <h2 className="mt-2 text-xl font-bold text-[var(--app-text)]">Tu perfil</h2>
+        <p className="mt-2 max-w-2xl text-sm leading-6 text-[var(--app-subtle-text)]">
+          Actualiza la informacion visible para ti y para las personas que conversan contigo.
+        </p>
       </header>
 
       <section className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-6">
         <div className="grid gap-4 xl:grid-cols-[1.1fr_0.9fr]">
-          <form className="surface-panel p-4 sm:p-5" onSubmit={(event) => {
-            saveProfile(event).catch(() => {
-              setStatusText("No fue posible actualizar el perfil.");
-            });
-          }}>
+          <form
+            className="surface-panel p-4 sm:p-5"
+            onSubmit={(event) => {
+              saveProfile(event).catch(() => {
+                setStatusText("No fue posible actualizar el perfil.");
+              });
+            }}
+          >
             <p className="eyebrow-label">Datos visibles</p>
             <div className="mt-4 grid gap-4 sm:grid-cols-2">
-              <input className="field-input" placeholder="Apodo publico" value={profile.publicAlias} onChange={(event) => setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))} />
-              <select className="field-input" value={profile.theme} onChange={(event) => setProfile((prev) => ({ ...prev, theme: Number(event.target.value) }))}>
+              <input
+                className="field-input"
+                onChange={(event) =>
+                  setProfile((prev) => ({ ...prev, publicAlias: event.target.value }))
+                }
+                placeholder="Apodo publico"
+                value={profile.publicAlias}
+              />
+              <select
+                className="field-input"
+                onChange={(event) =>
+                  applyThemeMode(Number(event.target.value) === 2 ? "dark" : "light")
+                }
+                value={profile.theme}
+              >
                 <option value={1}>Tema claro</option>
                 <option value={2}>Tema oscuro</option>
               </select>
             </div>
-            <textarea className="field-textarea mt-4 min-h-36" placeholder="Bio" value={profile.bio} onChange={(event) => setProfile((prev) => ({ ...prev, bio: event.target.value }))} />
+            <textarea
+              className="field-textarea mt-4 min-h-36"
+              onChange={(event) =>
+                setProfile((prev) => ({ ...prev, bio: event.target.value }))
+              }
+              placeholder="Bio"
+              value={profile.bio}
+            />
             <div className="mt-4 grid gap-4 sm:grid-cols-[1fr_auto] sm:items-center">
-              <label className="rounded-[24px] border border-dashed border-brand-300 bg-brand-50/75 p-4 text-sm text-slate-600" htmlFor="profile-image">
-                <span className="block font-semibold text-slate-900">Foto de perfil</span>
-                <span className="mt-1 block text-xs">Selecciona jpg, png o webp para actualizar tu avatar.</span>
-                <input id="profile-image" type="file" accept="image/png,image/jpeg,image/webp" className="mt-3 block w-full text-xs" onChange={(event) => {
-                  uploadProfileImage(event).catch(() => {
-                    setStatusText("No fue posible subir la foto.");
-                  });
-                }} />
+              <label
+                className="rounded-[28px] border border-dashed border-brand-300 bg-brand-50/60 p-4 text-sm text-[var(--app-subtle-text)]"
+                htmlFor="profile-image"
+              >
+                <span className="block font-semibold text-[var(--app-text)]">Foto de perfil</span>
+                <span className="mt-1 block text-xs">
+                  Selecciona jpg, png o webp para actualizar tu avatar.
+                </span>
+                <input
+                  accept="image/png,image/jpeg,image/webp"
+                  className="mt-3 block w-full text-xs"
+                  id="profile-image"
+                  onChange={(event) => {
+                    uploadProfileImage(event).catch(() => {
+                      setStatusText("No fue posible subir la foto.");
+                    });
+                  }}
+                  type="file"
+                />
               </label>
-              <div className="justify-self-start rounded-[24px] border border-slate-200 bg-white p-4">
-                <p className="text-xs uppercase text-slate-400">Color acento</p>
-                <input className="mt-3 h-12 w-24 cursor-pointer rounded-xl border border-slate-200 bg-white p-1" type="color" value={profile.accentColor} onChange={(event) => setProfile((prev) => ({ ...prev, accentColor: event.target.value }))} />
+              <div className="justify-self-start rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
+                <p className="text-xs uppercase text-[var(--app-subtle-text)]">Color acento</p>
+                <input
+                  className="mt-3 h-12 w-24 cursor-pointer rounded-xl border border-[var(--muted-card-border)] bg-transparent p-1"
+                  onChange={(event) =>
+                    setProfile((prev) => ({ ...prev, accentColor: event.target.value }))
+                  }
+                  type="color"
+                  value={profile.accentColor}
+                />
               </div>
             </div>
-            <button className="primary-button mt-4 w-full sm:w-auto" type="submit">Guardar perfil</button>
+            <button className="primary-button mt-4 w-full sm:w-auto" type="submit">
+              Guardar perfil
+            </button>
           </form>
 
           <aside className="surface-panel p-4 sm:p-5">
             <p className="eyebrow-label">Vista rapida</p>
-            <div className="mt-4 rounded-[28px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-5 text-white">
+            <div className="mt-4 rounded-[32px] bg-[linear-gradient(145deg,#27343d,#4f6573)] p-5 text-white">
               <p className="text-xs uppercase tracking-[0.2em] text-white/70">Perfil publico</p>
-              <h3 className="mt-3 text-2xl font-bold">{profile.publicAlias || user?.publicAlias || "Sin alias"}</h3>
-              <p className="mt-2 text-sm leading-6 text-white/80">{profile.bio || "Tu bio aparecera aqui cuando la completes."}</p>
+              <h3 className="mt-3 text-2xl font-bold">
+                {profile.publicAlias || user?.publicAlias || "Sin alias"}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-white/80">
+                {profile.bio || "Tu bio aparecera aqui cuando la completes."}
+              </p>
               <div className="mt-5 flex items-center gap-3">
-                <span className="h-4 w-4 rounded-full border border-white/60" style={{ backgroundColor: profile.accentColor }} />
+                <span
+                  className="h-4 w-4 rounded-full border border-white/60"
+                  style={{ backgroundColor: profile.accentColor }}
+                />
                 <span className="text-sm text-white/80">{profile.accentColor}</span>
               </div>
             </div>
-            <div className="mt-4 rounded-[24px] bg-slate-50 p-4 text-sm text-slate-600">
-              <p className="font-semibold text-slate-900">Consejo</p>
-              <p className="mt-2 leading-6">Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y grupales.</p>
+            <div className="mt-4 rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4 text-sm text-[var(--app-subtle-text)]">
+              <p className="font-semibold text-[var(--app-text)]">Consejo</p>
+              <p className="mt-2 leading-6">
+                Un alias claro y una bio corta ayudan a identificarte mejor en chats privados y
+                grupales.
+              </p>
             </div>
             <div className="mt-4 rounded-[24px] border border-brand-200 bg-brand-50/75 p-4 text-sm text-slate-700">
               <div className="flex items-start justify-between gap-3">
@@ -1392,132 +2578,246 @@ export function AppPage( ) {
   );
 
   return (
-    <div className="min-h-screen px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
-      <div className="mx-auto flex max-w-[1760px] flex-col gap-4">
-        <header className="surface-panel overflow-hidden p-4 sm:p-5">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div>
-              <p className="eyebrow-label">Centro de conversaciones</p>
-              <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">Habla Mas</h1>
-              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">
-                Gestiona chats privados, grupos, contactos y tu perfil desde un espacio mas amplio y comodo.
-              </p>
+    <div className="relative h-screen overflow-hidden bg-[var(--app-background)] text-[var(--app-text)]">
+      {sidebarOpen ? (
+        <button
+          aria-label="Cerrar menu"
+          className="absolute inset-0 z-20 bg-slate-950/40 lg:hidden"
+          onClick={() => setSidebarOpen(false)}
+          type="button"
+        />
+      ) : null}
+
+      <div className="relative h-full min-h-0 lg:grid lg:grid-cols-[430px_minmax(0,1fr)]">
+        <aside
+          className={clsx(
+            "absolute inset-y-0 left-0 z-30 flex min-h-0 w-[min(96vw,430px)] overflow-hidden border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] transition-transform duration-300 lg:static lg:w-auto lg:translate-x-0",
+            sidebarOpen ? "translate-x-0" : "-translate-x-[105%] lg:translate-x-0"
+          )}
+        >
+          <div className="hidden w-[72px] shrink-0 border-r border-[var(--surface-border)] bg-[var(--sidebar-shell)] lg:flex lg:flex-col lg:items-center lg:justify-between lg:px-3 lg:py-4">
+            <div className="flex flex-col items-center gap-3">
+              <button
+                className="flex h-11 w-11 items-center justify-center overflow-hidden rounded-full bg-[var(--chip-bg)] transition hover:bg-[var(--chip-hover)]"
+                onClick={() => setPanel("profile")}
+                type="button"
+              >
+                {user?.profileImageUrl ? (
+                  <img
+                    alt={user.publicAlias}
+                    className="h-full w-full object-cover"
+                    src={user.profileImageUrl}
+                  />
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center text-sm font-bold text-[var(--app-text)]">
+                    {getInitials(user?.publicAlias || "HM")}
+                  </span>
+                )}
+              </button>
+
+              <RailButton
+                active={panel === "chats"}
+                badge={
+                  Object.values(unreadByConversation).reduce((sum, value) => sum + value, 0) ||
+                  undefined
+                }
+                icon={<ChatIcon className="h-5 w-5" />}
+                label="Chats"
+                onClick={() => {
+                  setPanel("chats");
+                  setInboxFilter("chats");
+                  setShowGroupCreator(false);
+                }}
+              />
+
+              <RailButton
+                active={panel === "groups"}
+                badge={groupChats.length || undefined}
+                icon={<GroupIcon className="h-5 w-5" />}
+                label="Grupos"
+                onClick={() => {
+                  setPanel("groups");
+                  setInboxFilter("groups");
+                }}
+              />
+
+              <RailButton
+                active={panel === "contacts"}
+                badge={contacts.length || undefined}
+                icon={<ContactIcon className="h-5 w-5" />}
+                label="Contactos"
+                onClick={() => {
+                  setPanel("contacts");
+                  setShowGroupCreator(false);
+                }}
+              />
+
+              <Link
+                aria-label="Chatbot IA"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                title="Chatbot IA"
+                to="/chatbot"
+              >
+                <BotIcon className="h-5 w-5" />
+              </Link>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3 lg:min-w-[420px]">
-              <div className="rounded-[24px] bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">Privados</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{conversations.length}</p>
-              </div>
-              <div className="rounded-[24px] bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">Grupos</p>
-                <p className="mt-2 text-2xl font-bold text-slate-950">{groupChats.length}</p>
-              </div>
-              <div className="rounded-[24px] bg-slate-50 p-4">
-                <p className="text-xs uppercase text-slate-400">En linea</p>
-                <p className="mt-2 text-2xl font-bold text-emerald-600">{onlineContacts}</p>
-              </div>
+            <div className="flex flex-col items-center gap-3">
+              <button
+                aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
+                type="button"
+              >
+                {themeMode === "dark" ? (
+                  <SunIcon className="h-5 w-5" />
+                ) : (
+                  <MoonIcon className="h-5 w-5" />
+                )}
+              </button>
+
+              <button
+                aria-label="Perfil"
+                className={clsx(
+                  "flex h-11 w-11 items-center justify-center rounded-2xl transition",
+                  panel === "profile"
+                    ? "bg-[var(--chat-item-active)] text-[#25d366]"
+                    : "text-[var(--app-subtle-text)] hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                )}
+                onClick={() => setPanel("profile")}
+                type="button"
+              >
+                <SettingsIcon className="h-5 w-5" />
+              </button>
+
+              <button
+                aria-label="Salir"
+                className="flex h-11 w-11 items-center justify-center rounded-2xl text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => logout().catch(() => undefined)}
+                type="button"
+              >
+                <LogoutIcon className="h-5 w-5" />
+              </button>
             </div>
           </div>
-        </header>
 
-        <div className="grid gap-4 xl:grid-cols-[360px_minmax(0,1fr)]">
-          <aside className="surface-panel flex min-h-[260px] flex-col overflow-hidden">
-            <div className="border-b border-white/70 px-4 py-4 sm:px-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="eyebrow-label">Cuenta activa</p>
-                  <h2 className="mt-2 text-xl font-bold text-slate-950">{user?.publicAlias}</h2>
-                  <p className="mt-1 text-sm text-slate-500">{user?.publicCode}</p>
-                </div>
-                <button className="secondary-button px-3 py-2 text-xs sm:text-sm" onClick={() => logout().catch(() => undefined)}>
-                  Salir
-                </button>
-              </div>
-
-              <nav className="mt-4 flex gap-2 overflow-x-auto pb-1 xl:grid xl:grid-cols-2">
-                {(Object.keys(panelLabels) as Panel[]).map((item) => (
-                  <button
-                    className={clsx(
-                      "whitespace-nowrap rounded-2xl px-4 py-2.5 text-sm font-semibold transition",
-                      panel === item ? "bg-brand-600 text-white shadow-[0_16px_30px_-18px_rgba(79,101,115,0.95)]" : "border border-slate-200 bg-white/70 text-slate-700 hover:border-brand-300 hover:text-brand-700"
-                    )}
-                    key={item}
-                    onClick={() => setPanel(item)}
-                  >
-                    {panelLabels[item]}
-                  </button>
-                ))}
-              </nav>
-
-              <div className="mt-3 grid gap-2 sm:grid-cols-2">
-                <Link className="secondary-button" to="/chatbot">
-                  Chatbot IA
-                </Link>
-                <div className="rounded-2xl bg-slate-100 px-4 py-3 text-xs font-semibold text-slate-600">
-                  Panel actual: {panelLabels[panel]}
-                </div>
-              </div>
-            </div>
-
-            <div className="min-h-0 flex-1 overflow-y-auto p-4 sm:p-5">
-              {renderSidebarContent()}
-            </div>
-          </aside>
-
-          <main className="surface-panel flex min-h-[70vh] flex-col overflow-hidden">
-            {panel === "groups" ? renderGroupMain() : panel === "chats" ? renderChatMain() : panel === "contacts" ? renderContactsWorkspace() : renderProfileWorkspace()}
-
-            {(panel === "chats" || panel === "groups") ? (
-              <footer className="border-t border-white/70 bg-white/82 p-4 sm:p-5">
-                <form className="flex flex-col gap-3 lg:flex-row lg:flex-wrap lg:items-center" onSubmit={(event) => {
-                  sendText(event).catch(() => {
-                    setStatusText("No fue posible enviar el mensaje.");
-                  });
-                }}>
-                  <input
-                    className="field-input flex-1 text-base lg:min-w-[220px]"
-                    placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
-                    value={messageInput}
-                    onChange={(event) => {
-                      setMessageInput(event.target.value);
-                      if (panel === "chats") {
-                        sendTyping(event.target.value.trim().length > 0).catch(() => undefined);
-                      }
-                    }}
+          <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <div className="flex items-center gap-3 border-b border-[var(--surface-border)] px-4 py-3 lg:hidden">
+              <button
+                className="flex h-11 w-11 shrink-0 items-center justify-center overflow-hidden rounded-full bg-[var(--chip-bg)] transition hover:bg-[var(--chip-hover)]"
+                onClick={() => {
+                  setPanel("profile");
+                  setSidebarOpen(true);
+                }}
+                type="button"
+              >
+                {user?.profileImageUrl ? (
+                  <img
+                    alt={user.publicAlias}
+                    className="h-full w-full rounded-full object-cover"
+                    src={user.profileImageUrl}
                   />
-                  <label className="secondary-button cursor-pointer">
-                    Adjuntar
-                    <input className="hidden" accept={ATTACHMENT_ACCEPT} type="file" onChange={(event) => {
-                      sendAttachment(event).catch(() => {
-                        setStatusText("No fue posible enviar el adjunto.");
-                      });
-                    }} />
-                  </label>
-                  <button
-                    className={clsx(
-                      "secondary-button",
-                      isRecordingVoice ? "border-rose-300 bg-rose-50 text-rose-700" : undefined
-                    )}
-                    type="button"
-                    onClick={() => {
-                      toggleVoiceRecording().catch(() => {
-                        setStatusText("No fue posible usar el microfono.");
-                        setIsRecordingVoice(false);
-                      });
-                    }}
-                  >
-                    {isRecordingVoice ? "Detener voz" : "Grabar voz"}
-                  </button>
-                  <button className="primary-button lg:min-w-36" type="submit">Enviar</button>
-                </form>
-              </footer>
-            ) : null}
-          </main>
-        </div>
+                ) : (
+                  <span className="flex h-full w-full items-center justify-center rounded-full text-sm font-bold text-[var(--app-text)]">
+                    {getInitials(user?.publicAlias || "HM")}
+                  </span>
+                )}
+              </button>
+
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold text-[var(--app-text)]">
+                  {profile.publicAlias || user?.publicAlias || "Habla Mas"}
+                </p>
+                <p className="truncate text-[11px] text-[var(--app-subtle-text)]">Habla Mas</p>
+              </div>
+
+              <button
+                aria-label={themeMode === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+                className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-[var(--app-subtle-text)] transition hover:bg-[var(--chip-hover)] hover:text-[var(--app-text)]"
+                onClick={() => applyThemeMode(themeMode === "dark" ? "light" : "dark")}
+                type="button"
+              >
+                {themeMode === "dark" ? (
+                  <SunIcon className="h-5 w-5" />
+                ) : (
+                  <MoonIcon className="h-5 w-5" />
+                )}
+              </button>
+            </div>
+
+            {renderSidebarContent()}
+
+            <div className="flex items-center justify-between gap-2 border-t border-[var(--surface-border)] px-3 py-3 lg:hidden">
+              <SidebarFooterButton
+                icon={<SettingsIcon className="h-4 w-4" />}
+                label="Perfil"
+                onClick={() => {
+                  setPanel("profile");
+                  setSidebarOpen(true);
+                }}
+              />
+              <SidebarFooterButton
+                icon={<LogoutIcon className="h-4 w-4" />}
+                label="Salir"
+                onClick={() => logout().catch(() => undefined)}
+              />
+            </div>
+          </div>
+        </aside>
+
+        <main className="relative flex h-full min-h-0 flex-col overflow-hidden bg-[var(--conversation-shell)]">
+          {panel !== "chats" && panel !== "groups" ? (
+            <div className="absolute left-4 top-4 z-10 lg:hidden">{mobileSidebarToggle}</div>
+          ) : null}
+
+          {panel === "groups"
+            ? renderGroupMain()
+            : panel === "chats"
+              ? renderChatMain()
+              : panel === "contacts"
+                ? renderContactsWorkspace()
+                : renderProfileWorkspace()}
+
+          {messagingPanel ? (
+            <MessageComposer
+              attachmentAccept={ATTACHMENT_ACCEPT}
+              canSend={canSendMessage}
+              disabled={!composerEnabled}
+              inputValue={messageInput}
+              isRecordingVoice={isRecordingVoice}
+              onAttachment={(event) => {
+                sendAttachment(event).catch(() => {
+                  setStatusText("No fue posible enviar el adjunto.");
+                });
+              }}
+              onChange={(value) => {
+                setMessageInput(value);
+                if (panel === "chats") {
+                  sendTyping(value.trim().length > 0).catch(() => undefined);
+                }
+              }}
+              onSubmit={(event) => {
+                sendText(event).catch(() => {
+                  setStatusText("No fue posible enviar el mensaje.");
+                });
+              }}
+              onToggleVoice={() => {
+                toggleVoiceRecording().catch(() => {
+                  setStatusText("No fue posible usar el microfono.");
+                  setIsRecordingVoice(false);
+                });
+              }}
+              placeholder={panel === "groups" ? "Escribe al grupo" : "Escribe un mensaje"}
+            />
+          ) : null}
+        </main>
       </div>
 
-      {statusText ? <div className="mx-auto mt-4 max-w-[1760px] rounded-2xl bg-brand-900 px-4 py-3 text-sm font-medium text-white shadow-[0_18px_34px_-24px_rgba(15,23,42,0.7)]">{statusText}</div> : null}
+      {statusText ? (
+        <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[min(calc(100%-2rem),34rem)] -translate-x-1/2 rounded-2xl bg-[var(--toast-bg)] px-4 py-3 text-sm font-medium text-[var(--toast-text)] shadow-[0_22px_50px_-26px_rgba(15,23,42,0.78)]">
+          {statusText}
+        </div>
+      ) : null}
     </div>
   );
 }

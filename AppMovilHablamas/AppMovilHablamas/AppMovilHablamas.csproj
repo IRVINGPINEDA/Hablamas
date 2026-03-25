@@ -53,6 +53,10 @@
 		<JavaSdkDirectory Condition="'$(JavaSdkDirectory)' == '' and Exists('C:\\Program Files\\Android\\Android Studio\\jbr')">C:\Program Files\Android\Android Studio\jbr</JavaSdkDirectory>
 	</PropertyGroup>
 
+	<PropertyGroup Condition="$([MSBuild]::GetTargetPlatformIdentifier('$(TargetFramework)')) == 'android' and '$(Configuration)' == 'Release'">
+		<AndroidPackageFormats Condition="'$(AndroidPackageFormats)' == ''">apk</AndroidPackageFormats>
+	</PropertyGroup>
+
 	<ItemGroup>
 		<!-- App Icon -->
 		<MauiIcon Include="Resources\AppIcon\appicon.svg" ForegroundFile="Resources\AppIcon\appiconfg.svg" Color="#512BD4" />
@@ -76,5 +80,7 @@
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="10.0.0" />
 		<PackageReference Include="Microsoft.AspNetCore.SignalR.Client" Version="10.0.0" />
 	</ItemGroup>
+
+	<Import Project="AppMovilHablamas.Signing.props" Condition="Exists('AppMovilHablamas.Signing.props')" />
 
 </Project>

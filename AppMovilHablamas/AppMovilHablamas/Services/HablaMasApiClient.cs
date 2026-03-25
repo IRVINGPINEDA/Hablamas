@@ -18,7 +18,7 @@ public sealed class HablaMasApiClient
     public HablaMasApiClient(AppSession session)
     {
         _session = session;
-        _httpClient.Timeout = TimeSpan.FromSeconds(120);
+        _httpClient.Timeout = TimeSpan.FromSeconds(20);
     }
 
     public async Task<AuthPayloadDto> LoginAsync(string email, string password, CancellationToken cancellationToken = default)
@@ -143,7 +143,7 @@ public sealed class HablaMasApiClient
         }
 
         request.Content = content;
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendRequestAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized && await TryRefreshTokenAsync(cancellationToken))
         {
             return await UploadImageAsync(relativeUrl, filePath, cancellationToken);
@@ -166,7 +166,7 @@ public sealed class HablaMasApiClient
             request.Content = new StringContent(JsonSerializer.Serialize(body, JsonOptions), Encoding.UTF8, "application/json");
         }
 
-        using var response = await _httpClient.SendAsync(request, cancellationToken);
+        using var response = await SendRequestAsync(request, cancellationToken);
         if (response.StatusCode == HttpStatusCode.Unauthorized && allowRefresh && await TryRefreshTokenAsync(cancellationToken))
         {
             return await SendAsync<T>(method, relativeUrl, body, allowRefresh: false, cancellationToken);
@@ -196,7 +196,7 @@ public sealed class HablaMasApiClient
                 Content = new StringContent(JsonSerializer.Serialize(new { refreshToken = _session.RefreshToken }, JsonOptions), Encoding.UTF8, "application/json")
             };
 
-            using var response = await _httpClient.SendAsync(request, cancellationToken);
+            using var response = await SendRequestAsync(request, cancellationToken);
             if (!response.IsSuccessStatusCode)
             {
                 await _session.SignOutAsync();
@@ -216,6 +216,28 @@ public sealed class HablaMasApiClient
 
     private Uri BuildUri(string relativeUrl)
         => new($"{_session.ApiBaseUrl.TrimEnd('/')}{relativeUrl}");
+
+    private async Task<HttpResponseMessage> SendRequestAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            return await _httpClient.SendAsync(request, cancellationToken);
+        }
+        catch (TaskCanceledException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            throw new InvalidOperationException(
+                $"No se pudo conectar a {_session.ApiBaseUrl}. Si usas un telefono fisico, no sirve localhost ni 10.0.2.2; usa la IP LAN de tu PC o {AppSessionDefaultApiHint()}.",
+                ex);
+        }
+        catch (HttpRequestException ex)
+        {
+            throw new InvalidOperationException(
+                $"No se pudo conectar a {_session.ApiBaseUrl}. Verifica la direccion del servidor y que el telefono este en la misma red o usa {AppSessionDefaultApiHint()}.",
+                ex);
+        }
+    }
+
+    private static string AppSessionDefaultApiHint() => "https://caleiro.online/api";
 
     private static async Task EnsureSuccessAsync(HttpResponseMessage response, CancellationToken cancellationToken)
     {

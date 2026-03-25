@@ -11,7 +11,7 @@ public sealed class ProfilePage : ContentPage
     private readonly Entry _aliasEntry = new() { Placeholder = "Apodo publico" };
     private readonly Editor _bioEditor = new() { Placeholder = "Bio", AutoSize = EditorAutoSizeOption.TextChanges, MinimumHeightRequest = 100 };
     private readonly Entry _accentEntry = new() { Placeholder = "#1677B3" };
-    private readonly Entry _apiUrlEntry = new() { Placeholder = "http://localhost:8080/api" };
+    private readonly Entry _apiUrlEntry = new() { Placeholder = "https://caleiro.online/api" };
     private readonly Picker _themePicker = new() { Title = "Tema" };
     private readonly Label _userCodeLabel = new() { FontSize = 14 };
     private ProfileDto? _profile;
