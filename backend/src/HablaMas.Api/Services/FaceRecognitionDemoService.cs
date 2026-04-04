@@ -11,20 +11,20 @@ namespace HablaMas.Api.Services;
 public sealed class FaceRecognitionDemoService
 {
     private readonly IHttpClientFactory _httpClientFactory;
-    private readonly OpenAiOptions _openAiOptions;
+    private readonly GroqOptions _groqOptions;
     private readonly UploadOptions _uploadOptions;
     private readonly string _appBaseUrl;
     private readonly ILogger<FaceRecognitionDemoService> _logger;
 
     public FaceRecognitionDemoService(
         IHttpClientFactory httpClientFactory,
-        IOptions<OpenAiOptions> openAiOptions,
+        IOptions<GroqOptions> groqOptions,
         IOptions<UploadOptions> uploadOptions,
         IConfiguration configuration,
         ILogger<FaceRecognitionDemoService> logger)
     {
         _httpClientFactory = httpClientFactory;
-        _openAiOptions = openAiOptions.Value;
+        _groqOptions = groqOptions.Value;
         _uploadOptions = uploadOptions.Value;
         _appBaseUrl = configuration["APP_BASE_URL"]?.TrimEnd('/') ?? string.Empty;
         _logger = logger;
@@ -36,9 +36,9 @@ public sealed class FaceRecognitionDemoService
         IReadOnlyCollection<FaceRecognitionCandidate> candidates,
         CancellationToken cancellationToken)
     {
-        if (string.IsNullOrWhiteSpace(_openAiOptions.ApiKey))
+        if (string.IsNullOrWhiteSpace(_groqOptions.ApiKey))
         {
-            throw new InvalidOperationException("OpenAI API key not configured.");
+            throw new InvalidOperationException("Groq API key not configured.");
         }
 
         if (candidates.Count == 0)
@@ -138,7 +138,7 @@ public sealed class FaceRecognitionDemoService
 
         var payload = new
         {
-            model = _openAiOptions.Model,
+            model = _groqOptions.Model,
             temperature = 0,
             response_format = new
             {
@@ -188,8 +188,8 @@ public sealed class FaceRecognitionDemoService
         var client = _httpClientFactory.CreateClient("openai");
         using var request = new HttpRequestMessage(
             HttpMethod.Post,
-            $"{_openAiOptions.BaseUrl.TrimEnd('/')}/chat/completions");
-        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _openAiOptions.ApiKey);
+            $"{_groqOptions.BaseUrl.TrimEnd('/')}/chat/completions");
+        request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _groqOptions.ApiKey);
         request.Content = new StringContent(JsonSerializer.Serialize(payload), Encoding.UTF8, "application/json");
 
         using var response = await client.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
