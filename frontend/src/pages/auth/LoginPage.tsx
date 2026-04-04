@@ -2,8 +2,10 @@ import { useState } from "react";
 import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthCard } from "../../components/AuthCard";
+import { FaceCaptureModal } from "../../components/FaceCaptureModal";
 import { AuthShell } from "../../components/AuthShell";
 import { useAuth } from "../../context/AuthContext";
+import type { AuthPayload } from "../../types";
 
 interface ApiProblemResponse {
   title?: string;
@@ -42,13 +44,33 @@ function extractLoginError(error: unknown): string {
   return "Credenciales invalidas o usuario bloqueado.";
 }
 
-export function LoginPage( ) {
-  const { login, loginWithPasskey } = useAuth();
+export function LoginPage() {
+  const { login, loginWithFace } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [faceModalOpen, setFaceModalOpen] = useState(false);
+
+  const navigateAfterLogin = (payload: AuthPayload): void => {
+    if (payload.mustChangePassword) {
+      navigate("/change-password", { replace: true });
+      return;
+    }
+
+    if (!payload.emailConfirmed) {
+      navigate("/verify-email", { replace: true });
+      return;
+    }
+
+    if (payload.roles.includes("Admin")) {
+      navigate("/admin", { replace: true });
+      return;
+    }
+
+    navigate("/app", { replace: true });
+  };
 
   const submit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -67,23 +89,7 @@ export function LoginPage( ) {
 
     try {
       const payload = await login(emailValue, passwordValue);
-
-      if (payload.mustChangePassword) {
-        navigate("/change-password", { replace: true });
-        return;
-      }
-
-      if (!payload.emailConfirmed) {
-        navigate("/verify-email", { replace: true });
-        return;
-      }
-
-      if (payload.roles.includes("Admin")) {
-        navigate("/admin", { replace: true });
-        return;
-      }
-
-      navigate("/app", { replace: true });
+      navigateAfterLogin(payload);
     } catch (requestError: unknown) {
       setError(extractLoginError(requestError));
     } finally {
@@ -91,29 +97,15 @@ export function LoginPage( ) {
     }
   };
 
-  const submitPasskey = async (): Promise<void> => {
+  const submitFaceLogin = async (file: File): Promise<void> => {
     setLoading(true);
     setError(null);
 
     try {
-      const payload = await loginWithPasskey(email);
-
-      if (payload.mustChangePassword) {
-        navigate("/change-password", { replace: true });
-        return;
-      }
-
-      if (!payload.emailConfirmed) {
-        navigate("/verify-email", { replace: true });
-        return;
-      }
-
-      if (payload.roles.includes("Admin")) {
-        navigate("/admin", { replace: true });
-        return;
-      }
-
-      navigate("/app", { replace: true });
+      const base64Data = await fileToBase64(file);
+      const payload = await loginWithFace(base64Data, file.type || "image/jpeg");
+      setFaceModalOpen(false);
+      navigateAfterLogin(payload);
     } catch (requestError: unknown) {
       setError(extractLoginError(requestError));
     } finally {
@@ -122,7 +114,11 @@ export function LoginPage( ) {
   };
 
   return (
-    <AuthShell title="Iniciar sesion" subtitle="Accede con tu correo y contrasena temporal o definitiva" accent="Inicio de sesion">
+    <AuthShell
+      accent="Inicio de sesion"
+      subtitle="Accede con tu correo y contrasena temporal o definitiva"
+      title="Iniciar sesion"
+    >
       <AuthCard title="Iniciar sesion" subtitle="Accede con tu correo y contrasena temporal o definitiva">
         <form className="space-y-4" onSubmit={submit}>
           <input
@@ -150,14 +146,15 @@ export function LoginPage( ) {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          <button className="primary-button w-full" type="submit" disabled={loading}>
+          <button className="primary-button w-full" disabled={loading} type="submit">
             {loading ? "Entrando..." : "Entrar"}
           </button>
           <button
             className="w-full rounded-2xl border border-brand-300 px-4 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
             disabled={loading}
             onClick={() => {
-              submitPasskey().catch(() => undefined);
+              setError(null);
+              setFaceModalOpen(true);
             }}
             type="button"
           >
@@ -170,7 +167,36 @@ export function LoginPage( ) {
           <p><Link className="font-medium text-brand-700" to="/register">Crear cuenta</Link></p>
         </div>
       </AuthCard>
+      <FaceCaptureModal
+        busy={loading}
+        description="Toma una selfie frontal. La app intentara identificar automaticamente el perfil que coincida con las fotos faciales guardadas."
+        onCapture={submitFaceLogin}
+        onClose={() => {
+          if (!loading) {
+            setFaceModalOpen(false);
+          }
+        }}
+        open={faceModalOpen}
+        title="Iniciar sesion con reconocimiento facial"
+      />
     </AuthShell>
   );
 }
 
+async function fileToBase64(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const result = reader.result;
+      if (typeof result !== "string") {
+        reject(new Error("No fue posible leer la foto facial."));
+        return;
+      }
+
+      const [, base64 = ""] = result.split(",", 2);
+      resolve(base64);
+    };
+    reader.onerror = () => reject(new Error("No fue posible leer la foto facial."));
+    reader.readAsDataURL(file);
+  });
+}

@@ -41,6 +41,12 @@ export interface PasskeyCredentialSummary {
   lastUsedAt?: string;
 }
 
+export interface FaceSampleSummary {
+  id: string;
+  imageUrl: string;
+  createdAt: string;
+}
+
 export interface ConversationSummary {
   id: string;
   createdAt: string;
