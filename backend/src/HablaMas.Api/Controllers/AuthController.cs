@@ -417,11 +417,11 @@ public sealed class AuthController : ControllerBase
                 x.PublicAlias,
                 Samples = x.FaceLoginSamples
                     .OrderByDescending(sample => sample.CreatedAt)
-                    .Take(3)
+                    .Take(2)
                     .Select(sample => sample.ImageUrl)
                     .ToList()
             })
-            .Take(25)
+            .Take(12)
             .ToListAsync();
 
         if (candidates.Count == 0)
