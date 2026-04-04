@@ -32,6 +32,15 @@ export interface AuthPayload {
   roles: string[];
 }
 
+export interface PasskeyCredentialSummary {
+  id: string;
+  friendlyName: string;
+  deviceType: string;
+  isBackedUp: boolean;
+  createdAt: string;
+  lastUsedAt?: string;
+}
+
 export interface ConversationSummary {
   id: string;
   createdAt: string;

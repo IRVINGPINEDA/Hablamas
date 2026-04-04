@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import axios from "axios";
 import { useParams } from "react-router-dom";
 import { authApi } from "../../lib/api";
@@ -96,14 +96,15 @@ export function AdminUserDetailPage( ) {
 
   return (
     <section className="space-y-4">
-      <header className="rounded-xl border border-slate-200 bg-slate-50 p-4">
-        <h2 className="text-xl font-semibold text-slate-900">{user.firstName} {user.lastName}</h2>
-        <p className="text-sm text-slate-600">{user.email}</p>
-        <p className="text-xs text-slate-500">Codigo publico: {user.publicCode}</p>
+      <header className="rounded-[28px] border border-white/70 bg-white/82 p-5 shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)]">
+        <p className="eyebrow-label">Detalle de usuario</p>
+        <h2 className="mt-2 text-2xl font-bold text-slate-900">{user.firstName} {user.lastName}</h2>
+        <p className="mt-2 text-sm text-slate-600">{user.email}</p>
+        <p className="mt-1 text-xs text-slate-500">Codigo publico: {user.publicCode}</p>
       </header>
 
-      <div className="grid gap-3 md:grid-cols-2">
-        <div className="rounded-xl border border-slate-200 p-4 text-sm">
+      <div className="grid gap-4 xl:grid-cols-[0.95fr_1.05fr]">
+        <div className="rounded-[28px] border border-white/70 bg-white/82 p-5 text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)]">
           <p><strong>Telefono:</strong> {user.phone}</p>
           <p><strong>Direccion:</strong> {user.address}</p>
           <p><strong>Bio:</strong> {user.bio || "-"}</p>
@@ -112,20 +113,20 @@ export function AdminUserDetailPage( ) {
           <p><strong>Ultimo login:</strong> {user.lastLoginAt ? new Date(user.lastLoginAt).toLocaleString() : "-"}</p>
         </div>
 
-        <div className="rounded-xl border border-slate-200 p-4 text-sm">
+        <div className="rounded-[28px] border border-white/70 bg-white/82 p-5 text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)]">
           <p><strong>Estado:</strong> {user.isBlocked ? "Bloqueado" : "Activo"}</p>
           <p><strong>Forzar cambio contrasena:</strong> {user.mustChangePassword ? "Si" : "No"}</p>
           <p><strong>Roles:</strong> {user.roles.join(", ")}</p>
           <div className="mt-3 flex flex-wrap gap-2">
             {user.isBlocked ? (
-              <button className="rounded bg-emerald-600 px-3 py-2 text-xs text-white" onClick={() => action("unblock").catch((error: unknown) => setStatus(extractApiError(error)))}>Desbloquear</button>
+              <button className="primary-button bg-emerald-600 px-3 py-2 text-xs hover:bg-emerald-700" onClick={() => action("unblock").catch((error: unknown) => setStatus(extractApiError(error)))}>Desbloquear</button>
             ) : (
-              <button className="rounded bg-rose-600 px-3 py-2 text-xs text-white" onClick={() => action("block").catch((error: unknown) => setStatus(extractApiError(error)))}>Bloquear</button>
+              <button className="primary-button bg-rose-600 px-3 py-2 text-xs hover:bg-rose-700" onClick={() => action("block").catch((error: unknown) => setStatus(extractApiError(error)))}>Bloquear</button>
             )}
-            <button className="rounded bg-slate-900 px-3 py-2 text-xs text-white" onClick={() => forceResetPassword().catch((error: unknown) => setStatus(extractApiError(error)))}>Generar temporal</button>
-            <button className="rounded bg-amber-600 px-3 py-2 text-xs text-white" onClick={() => action("resend-verification").catch((error: unknown) => setStatus(extractApiError(error)))}>Reenviar verificacion</button>
-            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "User" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol User</button>
-            <button className="rounded border border-slate-300 px-3 py-2 text-xs" onClick={() => action("set-role", { role: "Admin" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol Admin</button>
+            <button className="primary-button bg-slate-900 px-3 py-2 text-xs hover:bg-slate-800" onClick={() => forceResetPassword().catch((error: unknown) => setStatus(extractApiError(error)))}>Generar temporal</button>
+            <button className="primary-button bg-amber-600 px-3 py-2 text-xs hover:bg-amber-700" onClick={() => action("resend-verification").catch((error: unknown) => setStatus(extractApiError(error)))}>Reenviar verificacion</button>
+            <button className="secondary-button rounded-xl px-3 py-2 text-xs" onClick={() => action("set-role", { role: "User" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol User</button>
+            <button className="secondary-button rounded-xl px-3 py-2 text-xs" onClick={() => action("set-role", { role: "Admin" }).catch((error: unknown) => setStatus(extractApiError(error)))}>Rol Admin</button>
           </div>
 
           <label className="mt-3 flex items-center gap-2 text-xs">
@@ -134,11 +135,11 @@ export function AdminUserDetailPage( ) {
           </label>
 
           {lastTemporaryPassword ? (
-            <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 p-3">
+            <div className="mt-3 rounded-[24px] border border-amber-300 bg-amber-50 p-4">
               <p className="text-xs text-amber-900">Contrasena temporal (visible una sola vez):</p>
               <p className="mt-1 break-all font-mono text-sm text-slate-900">{lastTemporaryPassword}</p>
               <button
-                className="mt-2 rounded border border-slate-300 bg-white px-2 py-1 text-xs"
+                className="secondary-button mt-2 rounded-xl px-3 py-2 text-xs"
                 onClick={() => {
                   navigator.clipboard.writeText(lastTemporaryPassword).then(() => {
                     setStatus("Contrasena temporal copiada.");
@@ -159,4 +160,3 @@ export function AdminUserDetailPage( ) {
     </section>
   );
 }
-

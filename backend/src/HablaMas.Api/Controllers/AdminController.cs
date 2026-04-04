@@ -22,6 +22,7 @@ public sealed class AdminController : ControllerBase
     private readonly RoleManager<AppRole> _roleManager;
     private readonly IPasswordGenerator _passwordGenerator;
     private readonly IEmailService _emailService;
+    private readonly IEmailTemplateService _emailTemplateService;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AdminController> _logger;
 
@@ -31,6 +32,7 @@ public sealed class AdminController : ControllerBase
         RoleManager<AppRole> roleManager,
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
+        IEmailTemplateService emailTemplateService,
         IConfiguration configuration,
         ILogger<AdminController> logger)
     {
@@ -39,6 +41,7 @@ public sealed class AdminController : ControllerBase
         _roleManager = roleManager;
         _passwordGenerator = passwordGenerator;
         _emailService = emailService;
+        _emailTemplateService = emailTemplateService;
         _configuration = configuration;
         _logger = logger;
     }
@@ -187,7 +190,9 @@ public sealed class AdminController : ControllerBase
                 await _emailService.SendAsync(
                     user.Email!,
                     "Habla Mas - Reset forzado",
-                    $"<p>Tu nueva contrasena temporal es:</p><p><strong>{temporaryPassword}</strong></p><p>Debes cambiarla al iniciar sesion.</p>");
+                    _emailTemplateService.BuildForcedTemporaryPasswordEmail(
+                        recipientName: user.PublicAlias,
+                        temporaryPassword: temporaryPassword));
             }
             catch (Exception ex)
             {
@@ -231,7 +236,12 @@ public sealed class AdminController : ControllerBase
 
         try
         {
-            await _emailService.SendAsync(user.Email!, "Habla Mas - Verificacion", $"<p>Verifica tu cuenta aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+            await _emailService.SendAsync(
+                user.Email!,
+                "Habla Mas - Verificacion",
+                _emailTemplateService.BuildVerificationEmail(
+                    recipientName: user.PublicAlias,
+                    verifyUrl: verifyUrl));
         }
         catch (Exception ex)
         {

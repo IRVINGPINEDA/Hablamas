@@ -20,6 +20,7 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
     public DbSet<GroupChatMessage> GroupChatMessages => Set<GroupChatMessage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
 
     protected override void OnModelCreating(ModelBuilder builder)
     {
@@ -145,6 +146,21 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.HasIndex(x => x.Token).IsUnique();
             entity.HasOne(x => x.User)
                 .WithMany()
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<PasskeyCredential>(entity =>
+        {
+            entity.HasIndex(x => x.CredentialId).IsUnique();
+            entity.HasIndex(x => x.UserId);
+            entity.Property(x => x.CredentialId).HasColumnType("bytea");
+            entity.Property(x => x.PublicKey).HasColumnType("bytea");
+            entity.Property(x => x.FriendlyName).HasMaxLength(120);
+            entity.Property(x => x.DeviceType).HasMaxLength(40);
+            entity.Property(x => x.Transports).HasMaxLength(120);
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.PasskeyCredentials)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });

@@ -9,5 +9,6 @@ public sealed class SmtpOptions
     public string User { get; set; } = string.Empty;
     public string Pass { get; set; } = string.Empty;
     public string From { get; set; } = string.Empty;
+    public string FromName { get; set; } = "Habla Mas";
     public bool UseSsl { get; set; }
 }

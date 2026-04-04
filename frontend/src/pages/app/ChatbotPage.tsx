@@ -216,133 +216,182 @@ export function ChatbotPage( ) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 p-4 lg:p-8">
-      <div className="mx-auto flex max-w-6xl flex-col gap-4">
-        <header className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between gap-3">
+    <div className="min-h-screen px-3 py-3 sm:px-4 sm:py-4 lg:px-6 lg:py-6">
+      <div className="mx-auto flex max-w-[1760px] flex-col gap-4">
+        <header className="surface-panel overflow-hidden p-4 sm:p-5">
+          <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div>
-              <h1 className="text-xl font-semibold text-slate-900">Chatbot Habla Mas</h1>
-              <p className="text-sm text-slate-500">Preguntas, codigo e imagenes en una sola conversacion.</p>
+              <p className="eyebrow-label">Asistente IA</p>
+              <h1 className="mt-2 text-3xl font-extrabold tracking-tight text-slate-950 sm:text-4xl">Chatbot Habla Mas</h1>
+              <p className="mt-2 max-w-2xl text-sm leading-6 text-slate-600">Preguntas, codigo e imagenes en una sola conversacion con una interfaz mas comoda para trabajar.</p>
             </div>
-            <div className="flex items-center gap-2">
-              <Link className="rounded-lg border border-slate-300 px-3 py-2 text-sm" to="/app">
-                Volver a chats
-              </Link>
-              <button className="rounded-lg border border-slate-300 px-3 py-2 text-sm" onClick={clearConversation} type="button">
-                Limpiar
-              </button>
-              <button
-                className="rounded-lg bg-slate-900 px-3 py-2 text-sm text-white"
-                onClick={() => {
-                  logout().then(() => navigate("/login", { replace: true })).catch(() => navigate("/login", { replace: true }));
-                }}
-                type="button"
-              >
-                Salir
-              </button>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Mensajes</p>
+                <p className="mt-2 text-2xl font-bold text-slate-950">{messages.length}</p>
+              </div>
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Imagenes listas</p>
+                <p className="mt-2 text-2xl font-bold text-slate-950">{pendingImages.length}</p>
+              </div>
+              <div className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-xs uppercase text-slate-400">Usuario</p>
+                <p className="mt-2 truncate text-base font-bold text-slate-950">{user?.publicAlias}</p>
+              </div>
             </div>
           </div>
-          <p className="mt-2 text-xs text-slate-500">Usuario: {user?.publicAlias}</p>
         </header>
 
-        <main className="flex min-h-[72vh] flex-col rounded-2xl border border-slate-200 bg-white shadow-sm">
-          <section className="flex-1 space-y-3 overflow-y-auto p-4 lg:p-5">
-            {messages.length === 0 ? (
-              <div className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-4 text-sm text-slate-600">
-                Escribe una pregunta, pega codigo o adjunta imagenes para empezar.
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_320px]">
+          <main className="surface-panel flex min-h-[72vh] flex-col overflow-hidden">
+            <header className="border-b border-white/70 bg-white/78 px-4 py-4 backdrop-blur sm:px-6">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="eyebrow-label">Conversacion actual</p>
+                  <p className="mt-2 text-sm leading-6 text-slate-500">El asistente mantiene el contexto reciente y admite bloques de codigo e imagenes adjuntas.</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Link className="secondary-button" to="/app">
+                    Volver a chats
+                  </Link>
+                  <button className="secondary-button" onClick={clearConversation} type="button">
+                    Limpiar
+                  </button>
+                  <button
+                    className="primary-button bg-brand-900 hover:bg-brand-700"
+                    onClick={() => {
+                      logout().then(() => navigate("/login", { replace: true })).catch(() => navigate("/login", { replace: true }));
+                    }}
+                    type="button"
+                  >
+                    Salir
+                  </button>
+                </div>
               </div>
-            ) : null}
+            </header>
 
-            {messages.map((message) => (
-              <article
-                className={clsx(
-                  "max-w-[90%] rounded-2xl px-4 py-3 text-sm lg:max-w-[80%]",
-                  message.role === "user" ? "ml-auto bg-brand-600 text-white" : "bg-slate-100 text-slate-900"
-                )}
-                key={message.id}
-              >
-                {message.images.length > 0 ? (
-                  <div className="mb-3 grid grid-cols-2 gap-2">
-                    {message.images.map((image) => (
-                      <a className="block" href={image.previewUrl} key={`${message.id}-${image.name}`} rel="noreferrer" target="_blank">
-                        <img alt={image.name} className="h-28 w-full rounded-lg object-cover" src={image.previewUrl} />
-                      </a>
-                    ))}
-                  </div>
-                ) : null}
+            <section className="flex-1 space-y-4 overflow-y-auto bg-[linear-gradient(180deg,rgba(248,250,252,0.78),rgba(255,255,255,0.72))] p-4 sm:p-6">
+              {messages.length === 0 ? (
+                <div className="rounded-[24px] border border-dashed border-brand-200 bg-white/75 p-5 text-sm text-slate-600">
+                  <p className="text-lg font-semibold text-slate-900">Todo listo para empezar</p>
+                  <p className="mt-2 leading-6">Escribe una pregunta, pega codigo o adjunta imagenes para iniciar una conversacion mas completa.</p>
+                </div>
+              ) : null}
 
-                {splitBlocks(message.content).map((block, index) => (
-                  block.type === "code" ? (
-                    <div className="mb-2 overflow-x-auto rounded-lg bg-slate-900 p-3 text-xs text-slate-100" key={`${message.id}-${index}`}>
-                      {block.language ? <p className="mb-2 text-[10px] uppercase text-slate-400">{block.language}</p> : null}
-                      <pre className="whitespace-pre-wrap">
-                        <code>{block.value}</code>
-                      </pre>
-                    </div>
-                  ) : (
-                    <p className="mb-2 whitespace-pre-wrap leading-relaxed" key={`${message.id}-${index}`}>{block.value}</p>
-                  )
-                ))}
-
-                <p className={clsx("text-[10px]", message.role === "user" ? "text-brand-100" : "text-slate-500")}>
-                  {new Date(message.createdAt).toLocaleTimeString()}
-                </p>
-              </article>
-            ))}
-          </section>
-
-          <footer className="border-t border-slate-200 p-4">
-            {pendingImages.length > 0 ? (
-              <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
-                {pendingImages.map((image) => (
-                  <div className="relative overflow-hidden rounded-lg border border-slate-300" key={image.id}>
-                    <img alt={image.name} className="h-24 w-full object-cover" src={image.previewUrl} />
-                    <button
-                      className="absolute right-1 top-1 rounded bg-black/60 px-2 py-1 text-[10px] text-white"
-                      onClick={() => removePendingImage(image.id)}
-                      type="button"
-                    >
-                      Quitar
-                    </button>
-                  </div>
-                ))}
-              </div>
-            ) : null}
-
-            <form className="space-y-3" onSubmit={(event) => {
-              sendMessage(event).catch(() => {
-                setSending(false);
-                setStatusText("No fue posible enviar el mensaje.");
-              });
-            }}>
-              <textarea
-                className="min-h-28 w-full resize-y rounded-xl border border-slate-300 px-4 py-3"
-                onChange={(event) => setInput(event.target.value)}
-                placeholder="Escribe tu pregunta o pega codigo aqui..."
-                value={input}
-              />
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <label className="cursor-pointer rounded-xl border border-slate-300 px-3 py-2 text-sm text-slate-700">
-                  Adjuntar imagen
-                  <input accept="image/png,image/jpeg,image/webp" className="hidden" multiple onChange={(event) => {
-                    addImages(event).catch(() => {
-                      setStatusText("No fue posible procesar la imagen.");
-                    });
-                  }} type="file" />
-                </label>
-                <button
-                  className="rounded-xl bg-brand-600 px-4 py-2 font-semibold text-white disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={!canSend}
-                  type="submit"
+              {messages.map((message) => (
+                <article
+                  className={clsx(
+                    "max-w-[92%] rounded-[24px] px-4 py-3 text-sm shadow-[0_18px_34px_-26px_rgba(15,23,42,0.55)] sm:max-w-[84%]",
+                    message.role === "user" ? "ml-auto bg-brand-600 text-white" : "border border-white/70 bg-white text-slate-900"
+                  )}
+                  key={message.id}
                 >
-                  {sending ? "Enviando..." : "Enviar al chatbot"}
-                </button>
-              </div>
-            </form>
-          </footer>
-        </main>
+                  {message.images.length > 0 ? (
+                    <div className="mb-3 grid grid-cols-2 gap-2">
+                      {message.images.map((image) => (
+                        <a className="block" href={image.previewUrl} key={`${message.id}-${image.name}`} rel="noreferrer" target="_blank">
+                          <img alt={image.name} className="h-40 w-full rounded-2xl object-contain bg-slate-200/60" src={image.previewUrl} />
+                        </a>
+                      ))}
+                    </div>
+                  ) : null}
 
-        {statusText ? <div className="rounded-xl bg-slate-900 px-4 py-2 text-sm text-white">{statusText}</div> : null}
+                  {splitBlocks(message.content).map((block, index) => (
+                    block.type === "code" ? (
+                      <div className="mb-2 overflow-x-auto rounded-2xl bg-slate-900 p-3 text-xs text-slate-100" key={`${message.id}-${index}`}>
+                        {block.language ? <p className="mb-2 text-[10px] uppercase text-slate-400">{block.language}</p> : null}
+                        <pre className="whitespace-pre-wrap">
+                          <code>{block.value}</code>
+                        </pre>
+                      </div>
+                    ) : (
+                      <p className="mb-2 whitespace-pre-wrap leading-relaxed" key={`${message.id}-${index}`}>{block.value}</p>
+                    )
+                  ))}
+
+                  <p className={clsx("text-[10px] font-medium", message.role === "user" ? "text-brand-100" : "text-slate-500")}>
+                    {new Date(message.createdAt).toLocaleTimeString()}
+                  </p>
+                </article>
+              ))}
+            </section>
+
+            <footer className="border-t border-white/70 bg-white/82 p-4 sm:p-5">
+              {pendingImages.length > 0 ? (
+                <div className="mb-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                  {pendingImages.map((image) => (
+                    <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white" key={image.id}>
+                      <img alt={image.name} className="h-24 w-full object-contain bg-slate-100" src={image.previewUrl} />
+                      <button
+                        className="absolute right-2 top-2 rounded-full bg-black/70 px-2 py-1 text-[10px] font-semibold text-white"
+                        onClick={() => removePendingImage(image.id)}
+                        type="button"
+                      >
+                        Quitar
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+
+              <form className="space-y-3" onSubmit={(event) => {
+                sendMessage(event).catch(() => {
+                  setSending(false);
+                  setStatusText("No fue posible enviar el mensaje.");
+                });
+              }}>
+                <textarea
+                  className="field-textarea min-h-32"
+                  onChange={(event) => setInput(event.target.value)}
+                  placeholder="Escribe tu pregunta o pega codigo aqui..."
+                  value={input}
+                />
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                  <label className="secondary-button cursor-pointer">
+                    Adjuntar imagen
+                    <input accept="image/png,image/jpeg,image/webp" className="hidden" multiple onChange={(event) => {
+                      addImages(event).catch(() => {
+                        setStatusText("No fue posible procesar la imagen.");
+                      });
+                    }} type="file" />
+                  </label>
+                  <button
+                    className="primary-button sm:min-w-52"
+                    disabled={!canSend}
+                    type="submit"
+                  >
+                    {sending ? "Enviando..." : "Enviar al chatbot"}
+                  </button>
+                </div>
+              </form>
+            </footer>
+          </main>
+
+          <aside className="surface-panel p-4 sm:p-5">
+            <p className="eyebrow-label">Guia rapida</p>
+            <div className="mt-4 space-y-4">
+              <article className="rounded-[24px] bg-slate-50 p-4">
+                <p className="text-sm font-semibold text-slate-900">Buenas practicas</p>
+                <ul className="mt-3 space-y-2 text-sm leading-6 text-slate-600">
+                  <li>Pide contexto, codigo o explicaciones en el mismo hilo para mantener continuidad.</li>
+                  <li>Adjunta capturas o imagenes si necesitas analisis visual.</li>
+                  <li>Usa bloques de codigo para que la respuesta salga mas ordenada.</li>
+                </ul>
+              </article>
+
+              <article className="rounded-[24px] bg-brand-50/80 p-4">
+                <p className="text-sm font-semibold text-brand-900">Estado de la sesion</p>
+                <p className="mt-2 text-sm leading-6 text-slate-600">{sending ? "El modelo esta generando una respuesta." : "Listo para recibir una nueva consulta."}</p>
+              </article>
+
+              <article className="rounded-[24px] border border-dashed border-slate-200 p-4 text-sm leading-6 text-slate-600">
+                El historial reciente se reutiliza automaticamente, asi que puedes pedir correcciones o continuar una idea sin repetir todo desde cero.
+              </article>
+            </div>
+          </aside>
+        </div>
+
+        {statusText ? <div className="rounded-2xl bg-slate-900 px-4 py-3 text-sm font-medium text-white">{statusText}</div> : null}
       </div>
     </div>
   );

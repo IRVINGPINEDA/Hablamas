@@ -1,10 +1,49 @@
 import { useState } from "react";
+import axios from "axios";
 import { Link, useNavigate } from "react-router-dom";
 import { AuthCard } from "../../components/AuthCard";
+import { AuthShell } from "../../components/AuthShell";
 import { useAuth } from "../../context/AuthContext";
 
+interface ApiProblemResponse {
+  title?: string;
+  detail?: string;
+  errors?: Record<string, string[]>;
+}
+
+function extractLoginError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  if (!axios.isAxiosError(error)) {
+    return "No fue posible iniciar sesion.";
+  }
+
+  if (!error.response) {
+    return "No se pudo conectar al servidor. Si estas en telefono, verifica que la app y la API sean accesibles desde esa red.";
+  }
+
+  const data = error.response.data as ApiProblemResponse | undefined;
+  const fieldErrors = data?.errors ? Object.values(data.errors).flat().filter(Boolean) : [];
+
+  if (fieldErrors.length > 0) {
+    return fieldErrors.join(" ");
+  }
+
+  if (data?.detail) {
+    return data.detail;
+  }
+
+  if (data?.title) {
+    return data.title;
+  }
+
+  return "Credenciales invalidas o usuario bloqueado.";
+}
+
 export function LoginPage( ) {
-  const { login } = useAuth();
+  const { login, loginWithPasskey } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -16,8 +55,18 @@ export function LoginPage( ) {
     setLoading(true);
     setError(null);
 
+    const formData = new FormData(event.currentTarget);
+    const emailValue = String(formData.get("email") ?? email).trim();
+    const passwordValue = String(formData.get("password") ?? password);
+
+    if (!emailValue || !passwordValue) {
+      setLoading(false);
+      setError("Ingresa correo y contrasena.");
+      return;
+    }
+
     try {
-      const payload = await login(email, password);
+      const payload = await login(emailValue, passwordValue);
 
       if (payload.mustChangePassword) {
         navigate("/change-password", { replace: true });
@@ -35,21 +84,84 @@ export function LoginPage( ) {
       }
 
       navigate("/app", { replace: true });
-    } catch {
-      setError("Credenciales invalidas o usuario bloqueado.");
+    } catch (requestError: unknown) {
+      setError(extractLoginError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitPasskey = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payload = await loginWithPasskey(email);
+
+      if (payload.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
+
+      if (!payload.emailConfirmed) {
+        navigate("/verify-email", { replace: true });
+        return;
+      }
+
+      if (payload.roles.includes("Admin")) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+
+      navigate("/app", { replace: true });
+    } catch (requestError: unknown) {
+      setError(extractLoginError(requestError));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center px-4 py-8">
+    <AuthShell title="Iniciar sesion" subtitle="Accede con tu correo y contrasena temporal o definitiva" accent="Inicio de sesion">
       <AuthCard title="Iniciar sesion" subtitle="Accede con tu correo y contrasena temporal o definitiva">
         <form className="space-y-4" onSubmit={submit}>
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Correo" type="email" value={email} onChange={(event) => setEmail(event.target.value)} required />
-          <input className="w-full rounded-lg border border-slate-300 px-3 py-2" placeholder="Contrasena" type="password" value={password} onChange={(event) => setPassword(event.target.value)} required />
-          <button className="w-full rounded-lg bg-brand-600 px-4 py-2 font-semibold text-white hover:bg-brand-700 disabled:opacity-60" type="submit" disabled={loading}>
+          <input
+            autoCapitalize="none"
+            autoComplete="email"
+            autoCorrect="off"
+            className="field-input"
+            inputMode="email"
+            name="email"
+            placeholder="Correo"
+            required
+            type="email"
+            value={email}
+            onChange={(event) => setEmail(event.target.value)}
+          />
+          <input
+            autoCapitalize="none"
+            autoComplete="current-password"
+            autoCorrect="off"
+            className="field-input"
+            name="password"
+            placeholder="Contrasena"
+            required
+            type="password"
+            value={password}
+            onChange={(event) => setPassword(event.target.value)}
+          />
+          <button className="primary-button w-full" type="submit" disabled={loading}>
             {loading ? "Entrando..." : "Entrar"}
+          </button>
+          <button
+            className="w-full rounded-2xl border border-brand-300 px-4 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+            onClick={() => {
+              submitPasskey().catch(() => undefined);
+            }}
+            type="button"
+          >
+            Ingresar con reconocimiento facial
           </button>
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         </form>
@@ -58,7 +170,7 @@ export function LoginPage( ) {
           <p><Link className="font-medium text-brand-700" to="/register">Crear cuenta</Link></p>
         </div>
       </AuthCard>
-    </div>
+    </AuthShell>
   );
 }
 

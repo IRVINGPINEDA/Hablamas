@@ -2,11 +2,14 @@ using System.Security.Cryptography;
 using System.Text;
 using HablaMas.Api.Contracts.Auth;
 using HablaMas.Api.Extensions;
+using HablaMas.Api.Services;
 using HablaMas.Application.DTOs;
 using HablaMas.Application.Interfaces;
 using HablaMas.Domain.Entities;
 using HablaMas.Infrastructure.Data;
 using HablaMas.Infrastructure.Options;
+using Fido2NetLib;
+using Fido2NetLib.Objects;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.AspNetCore.Mvc;
@@ -25,9 +28,12 @@ public sealed class AuthController : ControllerBase
     private readonly IJwtTokenService _jwtTokenService;
     private readonly IPasswordGenerator _passwordGenerator;
     private readonly IEmailService _emailService;
+    private readonly IEmailTemplateService _emailTemplateService;
     private readonly JwtOptions _jwtOptions;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
+    private readonly IFido2 _fido2;
+    private readonly PasskeyOperationStore _passkeyOperationStore;
 
     public AuthController(
         UserManager<AppUser> userManager,
@@ -35,18 +41,24 @@ public sealed class AuthController : ControllerBase
         IJwtTokenService jwtTokenService,
         IPasswordGenerator passwordGenerator,
         IEmailService emailService,
+        IEmailTemplateService emailTemplateService,
         IOptions<JwtOptions> jwtOptions,
         IConfiguration configuration,
-        ILogger<AuthController> logger)
+        ILogger<AuthController> logger,
+        IFido2 fido2,
+        PasskeyOperationStore passkeyOperationStore)
     {
         _userManager = userManager;
         _dbContext = dbContext;
         _jwtTokenService = jwtTokenService;
         _passwordGenerator = passwordGenerator;
         _emailService = emailService;
+        _emailTemplateService = emailTemplateService;
         _jwtOptions = jwtOptions.Value;
         _configuration = configuration;
         _logger = logger;
+        _fido2 = fido2;
+        _passkeyOperationStore = passkeyOperationStore;
     }
 
     [HttpPost("register")]
@@ -65,7 +77,13 @@ public sealed class AuthController : ControllerBase
 
                 try
                 {
-                    await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", $"<p>Tu cuenta ya existe y esta pendiente de verificacion.</p><p>Verifica tu correo aqui: <a href='{verificationUrl}'>{verificationUrl}</a></p>");
+                    await _emailService.SendAsync(
+                        email,
+                        "Habla Mas - Verifica tu correo",
+                        _emailTemplateService.BuildVerificationEmail(
+                            recipientName: existing.PublicAlias,
+                            verifyUrl: verificationUrl,
+                            pendingVerification: true));
                 }
                 catch (Exception ex)
                 {
@@ -121,17 +139,15 @@ public sealed class AuthController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var verifyUrl = BuildAbsoluteUrl($"/verify-email?userId={user.Id}&token={encodedToken}");
 
-        var html = $@"
-<h2>Bienvenido a Habla Mas</h2>
-<p>Tu contrasena temporal es:</p>
-<p><strong>{temporaryPassword}</strong></p>
-<p>Debes verificar tu correo aqui:</p>
-<p><a href='{verifyUrl}'>{verifyUrl}</a></p>
-<p>Despues de iniciar sesion, se te pedira cambiar la contrasena.</p>";
-
         try
         {
-            await _emailService.SendAsync(email, "Habla Mas - Verifica tu correo", html);
+            await _emailService.SendAsync(
+                email,
+                "Habla Mas - Verifica tu correo",
+                _emailTemplateService.BuildVerificationEmail(
+                    recipientName: user.PublicAlias,
+                    verifyUrl: verifyUrl,
+                    temporaryPassword: temporaryPassword));
         }
         catch (Exception ex)
         {
@@ -212,7 +228,12 @@ public sealed class AuthController : ControllerBase
 
         try
         {
-            await _emailService.SendAsync(user.Email!, "Habla Mas - Verifica tu correo", $"<p>Verifica tu correo aqui: <a href='{verifyUrl}'>{verifyUrl}</a></p>");
+            await _emailService.SendAsync(
+                user.Email!,
+                "Habla Mas - Verifica tu correo",
+                _emailTemplateService.BuildVerificationEmail(
+                    recipientName: user.PublicAlias,
+                    verifyUrl: verifyUrl));
         }
         catch (Exception ex)
         {
@@ -249,32 +270,261 @@ public sealed class AuthController : ControllerBase
             return Unauthorized(new ProblemDetails { Title = "Invalid credentials" });
         }
 
-        var roles = await _userManager.GetRolesAsync(user);
-        var accessToken = _jwtTokenService.CreateAccessToken(user, roles);
-        var refreshTokenValue = _jwtTokenService.CreateRefreshTokenValue();
+        return Ok(await CreateLoginResponseAsync(user));
+    }
 
-        _dbContext.RefreshTokens.Add(new RefreshToken
+    [HttpGet("passkeys")]
+    [Authorize]
+    public async Task<IActionResult> GetPasskeys()
+    {
+        var userId = User.GetRequiredUserId();
+        var passkeys = await _dbContext.PasskeyCredentials
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.FriendlyName,
+                x.DeviceType,
+                x.IsBackedUp,
+                x.CreatedAt,
+                x.LastUsedAt
+            })
+            .ToListAsync();
+
+        return Ok(passkeys);
+    }
+
+    [HttpPost("passkeys/register/options")]
+    [Authorize]
+    public async Task<IActionResult> CreatePasskeyRegistrationOptions()
+    {
+        var userId = User.GetRequiredUserId();
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        var existingCredentials = await _dbContext.PasskeyCredentials
+            .Where(x => x.UserId == user.Id)
+            .AsNoTracking()
+            .ToListAsync();
+
+        var options = _fido2.RequestNewCredential(new RequestNewCredentialParams
+        {
+            User = new Fido2User
+            {
+                DisplayName = user.PublicAlias,
+                Name = user.Email ?? user.PublicAlias,
+                Id = user.Id.ToByteArray()
+            },
+            ExcludeCredentials = existingCredentials
+                .Select(x => new PublicKeyCredentialDescriptor(x.CredentialId))
+                .ToList(),
+            AuthenticatorSelection = new AuthenticatorSelection
+            {
+                AuthenticatorAttachment = AuthenticatorAttachment.Platform,
+                ResidentKey = ResidentKeyRequirement.Preferred,
+                UserVerification = UserVerificationRequirement.Required
+            },
+            AttestationPreference = AttestationConveyancePreference.None,
+            Extensions = new AuthenticationExtensionsClientInputs
+            {
+                CredProps = true
+            }
+        });
+
+        _passkeyOperationStore.SetRegistrationOptions(user.Id, options.ToJson());
+        return Ok(options);
+    }
+
+    [HttpPost("passkeys/register/verify")]
+    [Authorize]
+    public async Task<IActionResult> VerifyPasskeyRegistration([FromBody] PasskeyRegisterVerifyRequest request)
+    {
+        if (request.Credential is null)
+        {
+            return BadRequest(new ProblemDetails { Title = "Passkey credential is required" });
+        }
+
+        var userId = User.GetRequiredUserId();
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        var jsonOptions = _passkeyOperationStore.TakeRegistrationOptions(userId);
+        if (string.IsNullOrWhiteSpace(jsonOptions))
+        {
+            return BadRequest(new ProblemDetails { Title = "Registration session expired" });
+        }
+
+        var options = CredentialCreateOptions.FromJson(jsonOptions);
+        IsCredentialIdUniqueToUserAsyncDelegate callback = async (args, cancellationToken) =>
+        {
+            var allCredentials = await _dbContext.PasskeyCredentials
+                .AsNoTracking()
+                .Select(x => x.CredentialId)
+                .ToListAsync(cancellationToken);
+
+            return allCredentials.All(x => !x.AsSpan().SequenceEqual(args.CredentialId));
+        };
+
+        var result = await _fido2.MakeNewCredentialAsync(new MakeNewCredentialParams
+        {
+            AttestationResponse = request.Credential,
+            OriginalOptions = options,
+            IsCredentialIdUniqueToUserCallback = callback
+        });
+
+        _dbContext.PasskeyCredentials.Add(new PasskeyCredential
         {
             Id = Guid.NewGuid(),
             UserId = user.Id,
-            Token = refreshTokenValue,
-            ExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenDays)
+            CredentialId = result.Id,
+            PublicKey = result.PublicKey,
+            SignatureCounter = result.SignCount,
+            FriendlyName = NormalizePasskeyFriendlyName(request.FriendlyName),
+            DeviceType = result.IsBackupEligible ? "Sincronizado" : "Este dispositivo",
+            IsBackedUp = result.IsBackedUp,
+            Transports = string.Join(",", result.Transports ?? [])
         });
 
-        user.LastLoginAt = DateTimeOffset.UtcNow;
         await _dbContext.SaveChangesAsync();
 
-        return Ok(new AuthResponseDto
+        return Ok(new { message = "Acceso biometrico activado." });
+    }
+
+    [HttpDelete("passkeys/{passkeyId:guid}")]
+    [Authorize]
+    public async Task<IActionResult> DeletePasskey(Guid passkeyId)
+    {
+        var userId = User.GetRequiredUserId();
+        var credential = await _dbContext.PasskeyCredentials
+            .FirstOrDefaultAsync(x => x.Id == passkeyId && x.UserId == userId);
+
+        if (credential is null)
         {
-            AccessToken = accessToken,
-            RefreshToken = refreshTokenValue,
-            MustChangePassword = user.MustChangePassword,
-            EmailConfirmed = user.EmailConfirmed,
-            UserId = user.Id.ToString(),
-            Email = user.Email ?? string.Empty,
-            PublicAlias = user.PublicAlias,
-            Roles = roles.ToArray()
+            return NotFound(new ProblemDetails { Title = "Passkey not found" });
+        }
+
+        _dbContext.PasskeyCredentials.Remove(credential);
+        await _dbContext.SaveChangesAsync();
+        return Ok(new { message = "Acceso biometrico eliminado." });
+    }
+
+    [HttpPost("passkeys/authenticate/options")]
+    [AllowAnonymous]
+    public async Task<IActionResult> CreatePasskeyAuthenticationOptions([FromBody] PasskeyAuthenticateOptionsRequest request)
+    {
+        var email = request.Email.Trim().ToLowerInvariant();
+        var user = await _userManager.Users
+            .FirstOrDefaultAsync(x => x.Email == email);
+
+        if (user is null)
+        {
+            return NotFound(new ProblemDetails { Title = "No se encontro un usuario con ese correo." });
+        }
+
+        if (user.IsBlocked)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "User blocked" });
+        }
+
+        var credentials = await _dbContext.PasskeyCredentials
+            .Where(x => x.UserId == user.Id)
+            .AsNoTracking()
+            .ToListAsync();
+
+        if (credentials.Count == 0)
+        {
+            return BadRequest(new ProblemDetails { Title = "Este usuario no tiene acceso biometrico activado." });
+        }
+
+        var options = _fido2.GetAssertionOptions(new GetAssertionOptionsParams
+        {
+            AllowedCredentials = credentials
+                .Select(x => new PublicKeyCredentialDescriptor(x.CredentialId))
+                .ToList(),
+            UserVerification = UserVerificationRequirement.Required,
+            Extensions = new AuthenticationExtensionsClientInputs()
         });
+
+        var operationId = _passkeyOperationStore.SetAuthenticationOptions(user.Id, email, options.ToJson());
+
+        return Ok(new
+        {
+            operationId,
+            publicKey = options
+        });
+    }
+
+    [HttpPost("passkeys/authenticate/verify")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResponseDto>> VerifyPasskeyAuthentication([FromBody] PasskeyAuthenticateVerifyRequest request)
+    {
+        if (request.Credential is null || string.IsNullOrWhiteSpace(request.OperationId))
+        {
+            return BadRequest(new ProblemDetails { Title = "Passkey verification payload is incomplete" });
+        }
+
+        var operation = _passkeyOperationStore.TakeAuthenticationOptions(request.OperationId);
+        if (operation is null)
+        {
+            return BadRequest(new ProblemDetails { Title = "Authentication session expired" });
+        }
+
+        var user = await _userManager.Users.FirstOrDefaultAsync(x => x.Id == operation.UserId);
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        if (user.IsBlocked)
+        {
+            return StatusCode(StatusCodes.Status403Forbidden, new ProblemDetails { Title = "User blocked" });
+        }
+
+        var options = AssertionOptions.FromJson(operation.OptionsJson);
+        var storedCredential = (await _dbContext.PasskeyCredentials
+            .Where(x => x.UserId == user.Id)
+            .ToListAsync())
+            .FirstOrDefault(x => x.CredentialId.AsSpan().SequenceEqual(request.Credential.RawId));
+
+        if (storedCredential is null)
+        {
+            return Unauthorized(new ProblemDetails { Title = "Passkey not recognized" });
+        }
+
+        IsUserHandleOwnerOfCredentialIdAsync callback = async (args, cancellationToken) =>
+        {
+            var userCredentials = await _dbContext.PasskeyCredentials
+                .Where(x => x.UserId == user.Id)
+                .AsNoTracking()
+                .Select(x => x.CredentialId)
+                .ToListAsync(cancellationToken);
+
+            return args.UserHandle is not null
+                && args.UserHandle.AsSpan().SequenceEqual(user.Id.ToByteArray())
+                && userCredentials.Any(x => x.AsSpan().SequenceEqual(args.CredentialId));
+        };
+
+        var result = await _fido2.MakeAssertionAsync(new MakeAssertionParams
+        {
+            AssertionResponse = request.Credential,
+            OriginalOptions = options,
+            StoredPublicKey = storedCredential.PublicKey,
+            StoredSignatureCounter = storedCredential.SignatureCounter,
+            IsUserHandleOwnerOfCredentialIdCallback = callback
+        });
+
+        storedCredential.SignatureCounter = result.SignCount;
+        storedCredential.IsBackedUp = result.IsBackedUp;
+        storedCredential.LastUsedAt = DateTimeOffset.UtcNow;
+
+        return Ok(await CreateLoginResponseAsync(user, saveChanges: true));
     }
 
     [HttpPost("refresh")]
@@ -339,10 +589,14 @@ public sealed class AuthController : ControllerBase
         var encodedToken = WebEncoders.Base64UrlEncode(Encoding.UTF8.GetBytes(token));
         var resetUrl = BuildAbsoluteUrl($"/reset-password?email={Uri.EscapeDataString(user.Email!)}&token={Uri.EscapeDataString(encodedToken)}");
 
-        var html = $"<p>Haz clic para restablecer tu contrasena:</p><p><a href='{resetUrl}'>{resetUrl}</a></p>";
         try
         {
-            await _emailService.SendAsync(user.Email!, "Habla Mas - Reset de contrasena", html);
+            await _emailService.SendAsync(
+                user.Email!,
+                "Habla Mas - Reset de contrasena",
+                _emailTemplateService.BuildPasswordResetEmail(
+                    recipientName: user.PublicAlias,
+                    resetUrl: resetUrl));
         }
         catch (Exception ex)
         {
@@ -481,6 +735,46 @@ public sealed class AuthController : ControllerBase
         }
 
         return $"{Request.Scheme}://{Request.Host}{relative}";
+    }
+
+    private async Task<AuthResponseDto> CreateLoginResponseAsync(AppUser user, bool saveChanges = true)
+    {
+        var roles = await _userManager.GetRolesAsync(user);
+        var accessToken = _jwtTokenService.CreateAccessToken(user, roles);
+        var refreshTokenValue = _jwtTokenService.CreateRefreshTokenValue();
+
+        _dbContext.RefreshTokens.Add(new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            UserId = user.Id,
+            Token = refreshTokenValue,
+            ExpiresAt = DateTimeOffset.UtcNow.AddDays(_jwtOptions.RefreshTokenDays)
+        });
+
+        user.LastLoginAt = DateTimeOffset.UtcNow;
+
+        if (saveChanges)
+        {
+            await _dbContext.SaveChangesAsync();
+        }
+
+        return new AuthResponseDto
+        {
+            AccessToken = accessToken,
+            RefreshToken = refreshTokenValue,
+            MustChangePassword = user.MustChangePassword,
+            EmailConfirmed = user.EmailConfirmed,
+            UserId = user.Id.ToString(),
+            Email = user.Email ?? string.Empty,
+            PublicAlias = user.PublicAlias,
+            Roles = roles.ToArray()
+        };
+    }
+
+    private static string NormalizePasskeyFriendlyName(string? friendlyName)
+    {
+        var normalized = friendlyName?.Trim();
+        return string.IsNullOrWhiteSpace(normalized) ? "Acceso biometrico" : normalized[..Math.Min(normalized.Length, 120)];
     }
 
     private static Dictionary<string, string[]> ToErrors(IdentityResult result)

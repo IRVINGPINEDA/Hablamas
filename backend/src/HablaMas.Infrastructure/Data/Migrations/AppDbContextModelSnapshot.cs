@@ -444,6 +444,60 @@ namespace HablaMas.Infrastructure.Data.Migrations
                     b.ToTable("MessageStatuses");
                 });
 
+            modelBuilder.Entity("HablaMas.Domain.Entities.PasskeyCredential", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("CredentialId")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<string>("DeviceType")
+                        .IsRequired()
+                        .HasMaxLength(40)
+                        .HasColumnType("character varying(40)");
+
+                    b.Property<string>("FriendlyName")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<bool>("IsBackedUp")
+                        .HasColumnType("boolean");
+
+                    b.Property<DateTimeOffset?>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<byte[]>("PublicKey")
+                        .IsRequired()
+                        .HasColumnType("bytea");
+
+                    b.Property<long>("SignatureCounter")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Transports")
+                        .IsRequired()
+                        .HasMaxLength(120)
+                        .HasColumnType("character varying(120)");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CredentialId")
+                        .IsUnique();
+
+                    b.HasIndex("UserId");
+
+                    b.ToTable("PasskeyCredentials");
+                });
+
             modelBuilder.Entity("HablaMas.Domain.Entities.RefreshToken", b =>
                 {
                     b.Property<Guid>("Id")
@@ -723,6 +777,17 @@ namespace HablaMas.Infrastructure.Data.Migrations
                     b.Navigation("Recipient");
                 });
 
+            modelBuilder.Entity("HablaMas.Domain.Entities.PasskeyCredential", b =>
+                {
+                    b.HasOne("HablaMas.Domain.Entities.AppUser", "User")
+                        .WithMany("PasskeyCredentials")
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("User");
+                });
+
             modelBuilder.Entity("HablaMas.Domain.Entities.RefreshToken", b =>
                 {
                     b.HasOne("HablaMas.Domain.Entities.AppUser", "User")
@@ -796,6 +861,8 @@ namespace HablaMas.Infrastructure.Data.Migrations
                     b.Navigation("GroupChatMemberships");
 
                     b.Navigation("OwnedGroupChats");
+
+                    b.Navigation("PasskeyCredentials");
                 });
 
             modelBuilder.Entity("HablaMas.Domain.Entities.Conversation", b =>
