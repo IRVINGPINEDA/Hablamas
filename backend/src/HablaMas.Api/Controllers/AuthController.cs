@@ -23,6 +23,13 @@ namespace HablaMas.Api.Controllers;
 [Route("api/auth")]
 public sealed class AuthController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedFaceImageTypes = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "image/jpeg",
+        "image/png",
+        "image/webp"
+    };
+
     private readonly UserManager<AppUser> _userManager;
     private readonly AppDbContext _dbContext;
     private readonly IJwtTokenService _jwtTokenService;
@@ -34,6 +41,9 @@ public sealed class AuthController : ControllerBase
     private readonly ILogger<AuthController> _logger;
     private readonly IFido2 _fido2;
     private readonly PasskeyOperationStore _passkeyOperationStore;
+    private readonly IFileStorageService _fileStorageService;
+    private readonly UploadOptions _uploadOptions;
+    private readonly FaceRecognitionDemoService _faceRecognitionDemoService;
 
     public AuthController(
         UserManager<AppUser> userManager,
@@ -43,10 +53,13 @@ public sealed class AuthController : ControllerBase
         IEmailService emailService,
         IEmailTemplateService emailTemplateService,
         IOptions<JwtOptions> jwtOptions,
+        IOptions<UploadOptions> uploadOptions,
         IConfiguration configuration,
         ILogger<AuthController> logger,
         IFido2 fido2,
-        PasskeyOperationStore passkeyOperationStore)
+        PasskeyOperationStore passkeyOperationStore,
+        IFileStorageService fileStorageService,
+        FaceRecognitionDemoService faceRecognitionDemoService)
     {
         _userManager = userManager;
         _dbContext = dbContext;
@@ -55,10 +68,13 @@ public sealed class AuthController : ControllerBase
         _emailService = emailService;
         _emailTemplateService = emailTemplateService;
         _jwtOptions = jwtOptions.Value;
+        _uploadOptions = uploadOptions.Value;
         _configuration = configuration;
         _logger = logger;
         _fido2 = fido2;
         _passkeyOperationStore = passkeyOperationStore;
+        _fileStorageService = fileStorageService;
+        _faceRecognitionDemoService = faceRecognitionDemoService;
     }
 
     [HttpPost("register")]
@@ -268,6 +284,197 @@ public sealed class AuthController : ControllerBase
         if (!validPassword)
         {
             return Unauthorized(new ProblemDetails { Title = "Invalid credentials" });
+        }
+
+        return Ok(await CreateLoginResponseAsync(user));
+    }
+
+    [HttpGet("face-samples")]
+    [Authorize]
+    public async Task<IActionResult> GetFaceSamples()
+    {
+        var userId = User.GetRequiredUserId();
+        var items = await _dbContext.FaceLoginSamples
+            .Where(x => x.UserId == userId)
+            .OrderByDescending(x => x.CreatedAt)
+            .Select(x => new
+            {
+                x.Id,
+                x.ImageUrl,
+                x.CreatedAt
+            })
+            .ToListAsync();
+
+        return Ok(items);
+    }
+
+    [HttpPost("face-samples")]
+    [Authorize]
+    [RequestSizeLimit(5_242_880)]
+    public async Task<IActionResult> CreateFaceSample([FromForm] IFormFile file)
+    {
+        var userId = User.GetRequiredUserId();
+        var user = await _userManager.FindByIdAsync(userId.ToString());
+        if (user is null)
+        {
+            return Unauthorized();
+        }
+
+        if (file is null || file.Length == 0)
+        {
+            return BadRequest(new ProblemDetails { Title = "File required" });
+        }
+
+        if (!AllowedFaceImageTypes.Contains(file.ContentType))
+        {
+            return BadRequest(new ProblemDetails { Title = "Solo se permiten jpg, png o webp." });
+        }
+
+        var maxBytes = _uploadOptions.MaxMb * 1024 * 1024;
+        if (file.Length > maxBytes)
+        {
+            return BadRequest(new ProblemDetails { Title = $"Max upload size is {_uploadOptions.MaxMb}MB" });
+        }
+
+        var currentCount = await _dbContext.FaceLoginSamples.CountAsync(x => x.UserId == userId);
+        if (currentCount >= 5)
+        {
+            return BadRequest(new ProblemDetails { Title = "Puedes registrar un maximo de 5 fotos faciales." });
+        }
+
+        var extension = Path.GetExtension(file.FileName);
+        await using var stream = file.OpenReadStream();
+        var imageUrl = await _fileStorageService.SaveAsync(stream, $"face-login{extension}", HttpContext.RequestAborted);
+
+        var sample = new FaceLoginSample
+        {
+            Id = Guid.NewGuid(),
+            UserId = userId,
+            ImageUrl = imageUrl,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+
+        _dbContext.FaceLoginSamples.Add(sample);
+        await _dbContext.SaveChangesAsync();
+
+        return Ok(new
+        {
+            sample.Id,
+            sample.ImageUrl,
+            sample.CreatedAt
+        });
+    }
+
+    [HttpDelete("face-samples/{sampleId:guid}")]
+    [Authorize]
+    public async Task<IActionResult> DeleteFaceSample(Guid sampleId)
+    {
+        var userId = User.GetRequiredUserId();
+        var sample = await _dbContext.FaceLoginSamples
+            .FirstOrDefaultAsync(x => x.Id == sampleId && x.UserId == userId);
+
+        if (sample is null)
+        {
+            return NotFound(new ProblemDetails { Title = "Foto facial no encontrada." });
+        }
+
+        _dbContext.FaceLoginSamples.Remove(sample);
+        await _dbContext.SaveChangesAsync();
+        return Ok(new { message = "Foto facial eliminada." });
+    }
+
+    [HttpPost("face-login")]
+    [AllowAnonymous]
+    public async Task<ActionResult<AuthResponseDto>> FaceLogin([FromBody] FaceLoginRequest request)
+    {
+        if (!AllowedFaceImageTypes.Contains(request.ContentType))
+        {
+            return BadRequest(new ProblemDetails { Title = "Solo se permiten jpg, png o webp." });
+        }
+
+        byte[] bytes;
+        try
+        {
+            bytes = Convert.FromBase64String(request.Base64Data);
+        }
+        catch
+        {
+            return BadRequest(new ProblemDetails { Title = "La imagen facial no tiene un formato valido." });
+        }
+
+        var maxBytes = _uploadOptions.MaxMb * 1024 * 1024;
+        if (bytes.Length == 0 || bytes.Length > maxBytes)
+        {
+            return BadRequest(new ProblemDetails { Title = $"La imagen facial debe pesar menos de {_uploadOptions.MaxMb}MB." });
+        }
+
+        var candidates = await _dbContext.Users
+            .AsNoTracking()
+            .Where(x => !x.IsBlocked && x.FaceLoginSamples.Any())
+            .Select(x => new
+            {
+                x.Id,
+                x.PublicAlias,
+                Samples = x.FaceLoginSamples
+                    .OrderByDescending(sample => sample.CreatedAt)
+                    .Take(3)
+                    .Select(sample => sample.ImageUrl)
+                    .ToList()
+            })
+            .Take(25)
+            .ToListAsync();
+
+        if (candidates.Count == 0)
+        {
+            return BadRequest(new ProblemDetails { Title = "No hay perfiles con reconocimiento facial registrado." });
+        }
+
+        FaceRecognitionMatchResult match;
+        try
+        {
+            match = await _faceRecognitionDemoService.IdentifyUserAsync(
+                request.ContentType,
+                request.Base64Data,
+                candidates
+                    .Select(candidate => new FaceRecognitionCandidate(
+                        candidate.Id.ToString(),
+                        candidate.PublicAlias,
+                        candidate.Samples.Select(BuildAbsoluteAssetUrl).ToList()))
+                    .ToList(),
+                HttpContext.RequestAborted);
+        }
+        catch (FaceRecognitionProviderException ex)
+        {
+            return StatusCode(StatusCodes.Status502BadGateway, new ProblemDetails
+            {
+                Title = "No se pudo analizar el rostro.",
+                Detail = ex.Message
+            });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return StatusCode(StatusCodes.Status503ServiceUnavailable, new ProblemDetails
+            {
+                Title = "Reconocimiento facial no configurado.",
+                Detail = ex.Message
+            });
+        }
+
+        if (string.IsNullOrWhiteSpace(match.MatchedUserId)
+            || !Guid.TryParse(match.MatchedUserId, out var matchedUserId)
+            || match.Confidence < 85)
+        {
+            return Unauthorized(new ProblemDetails
+            {
+                Title = "No se pudo identificar un perfil.",
+                Detail = match.Reason ?? "La selfie no coincide con suficiente confianza."
+            });
+        }
+
+        var user = await _userManager.FindByIdAsync(matchedUserId.ToString());
+        if (user is null)
+        {
+            return Unauthorized();
         }
 
         return Ok(await CreateLoginResponseAsync(user));
@@ -735,6 +942,21 @@ public sealed class AuthController : ControllerBase
         }
 
         return $"{Request.Scheme}://{Request.Host}{relative}";
+    }
+
+    private string BuildAbsoluteAssetUrl(string url)
+    {
+        if (Uri.TryCreate(url, UriKind.Absolute, out _))
+        {
+            return url;
+        }
+
+        if (!url.StartsWith('/'))
+        {
+            url = $"/{url}";
+        }
+
+        return BuildAbsoluteUrl(url);
     }
 
     private async Task<AuthResponseDto> CreateLoginResponseAsync(AppUser user, bool saveChanges = true)

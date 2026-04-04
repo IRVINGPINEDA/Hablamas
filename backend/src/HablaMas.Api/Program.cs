@@ -21,6 +21,7 @@ builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<PresenceTracker>();
 builder.Services.AddScoped<PasskeyOperationStore>();
+builder.Services.AddScoped<FaceRecognitionDemoService>();
 builder.Services.AddHttpClient("openai", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(120);

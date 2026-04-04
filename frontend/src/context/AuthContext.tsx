@@ -8,6 +8,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthPayload>;
+  loginWithFace: (base64Data: string, contentType: string) => Promise<AuthPayload>;
   loginWithPasskey: (email: string) => Promise<AuthPayload>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -77,6 +78,18 @@ export function AuthProvider({ children }: { children: ReactNode } ) {
     return payload;
   };
 
+  const loginWithFace = async (base64Data: string, contentType: string): Promise<AuthPayload> => {
+    const response = await authApi.post("/auth/face-login", { base64Data, contentType });
+    const payload = response.data as AuthPayload;
+
+    setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
+
+    await refreshProfile();
+
+    return payload;
+  };
+
   const loginWithPasskey = async (email: string): Promise<AuthPayload> => {
     const payload = await authenticateWithBiometricPasskey(email);
 
@@ -106,11 +119,12 @@ export function AuthProvider({ children }: { children: ReactNode } ) {
       user,
       loading,
       login,
+      loginWithFace,
       loginWithPasskey,
       logout,
       refreshProfile
     }),
-    [user, loading, loginWithPasskey]
+    [user, loading, loginWithFace, loginWithPasskey]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

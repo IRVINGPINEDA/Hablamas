@@ -3,20 +3,20 @@ import type { ChangeEvent, FormEvent, ReactNode, RefObject } from "react";
 import clsx from "clsx";
 import { HubConnection, HubConnectionState } from "@microsoft/signalr";
 import { Link } from "react-router-dom";
+import { FaceCaptureModal } from "../../components/FaceCaptureModal";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
-import { isBiometricLoginSupported, registerBiometricPasskey } from "../../lib/passkeys";
 import { createChatConnection } from "../../lib/signalr";
 import type {
   ChatAttachmentDto,
   ChatMessageType,
   ContactDto,
   ConversationSummary,
+  FaceSampleSummary,
   GroupChatSummary,
   GroupMemberDto,
   GroupMessageDto,
-  MessageDto,
-  PasskeyCredentialSummary
+  MessageDto
 } from "../../types";
 
 interface ProfileForm {
@@ -907,9 +907,10 @@ export function AppPage() {
     theme: toThemeNumber(themeMode),
     accentColor: "#5f7888"
   });
-  const [passkeys, setPasskeys] = useState<PasskeyCredentialSummary[]>([]);
-  const [passkeyBusy, setPasskeyBusy] = useState(false);
-  const [passkeyRemovingId, setPasskeyRemovingId] = useState<string | null>(null);
+  const [faceSamples, setFaceSamples] = useState<FaceSampleSummary[]>([]);
+  const [faceCaptureOpen, setFaceCaptureOpen] = useState(false);
+  const [faceBusy, setFaceBusy] = useState(false);
+  const [faceRemovingId, setFaceRemovingId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
   const connectionRef = useRef<HubConnection | null>(null);
@@ -943,7 +944,6 @@ export function AppPage() {
   const messagingPanel = panel === "chats" || panel === "groups";
   const composerEnabled = panel === "groups" ? Boolean(currentGroup) : Boolean(currentConversation);
   const canSendMessage = messageInput.trim().length > 0;
-  const biometricSupported = isBiometricLoginSupported();
 
   const activeMessages = useMemo(
     () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
@@ -1200,9 +1200,9 @@ export function AppPage() {
     setThemeMode(nextTheme);
   };
 
-  const loadPasskeys = async (): Promise<void> => {
-    const response = await authApi.get("/auth/passkeys");
-    setPasskeys(response.data as PasskeyCredentialSummary[]);
+  const loadFaceSamples = async (): Promise<void> => {
+    const response = await authApi.get("/auth/face-samples");
+    setFaceSamples(response.data as FaceSampleSummary[]);
   };
 
   const loadMessages = async (conversationId: string): Promise<void> => {
@@ -1238,7 +1238,7 @@ export function AppPage() {
       return;
     }
 
-    Promise.all([loadSidebar(), loadGroups(), loadProfile(), loadPasskeys()]).catch(() => {
+    Promise.all([loadSidebar(), loadGroups(), loadProfile(), loadFaceSamples()]).catch(() => {
       setStatusText("No fue posible cargar la aplicacion.");
     });
   }, [user]);
@@ -1248,8 +1248,8 @@ export function AppPage() {
       return;
     }
 
-    loadPasskeys().catch(() => {
-      setStatusText("No fue posible cargar el acceso biometrico.");
+    loadFaceSamples().catch(() => {
+      setStatusText("No fue posible cargar las fotos faciales.");
     });
   }, [panel]);
 
@@ -1747,36 +1747,40 @@ export function AppPage() {
     setStatusText("Foto de perfil actualizada.");
   };
 
-  const createPasskey = async (): Promise<void> => {
-    if (!biometricSupported) {
-      setStatusText("Este dispositivo o navegador no soporta acceso biometrico web.");
-      return;
-    }
-
-    setPasskeyBusy(true);
+  const createFaceSample = async (file: File): Promise<void> => {
+    setFaceBusy(true);
 
     try {
-      await registerBiometricPasskey("Este dispositivo");
-      await loadPasskeys();
-      setStatusText("Acceso con reconocimiento facial activado.");
+      const formData = new FormData();
+      formData.append("file", file);
+
+      await authApi.post("/auth/face-samples", formData, {
+        headers: {
+          "Content-Type": "multipart/form-data"
+        }
+      });
+
+      await loadFaceSamples();
+      setFaceCaptureOpen(false);
+      setStatusText("Foto facial guardada.");
     } catch (error: unknown) {
-      setStatusText(error instanceof Error ? error.message : "No fue posible activar el acceso biometrico.");
+      setStatusText(error instanceof Error ? error.message : "No fue posible guardar la foto facial.");
     } finally {
-      setPasskeyBusy(false);
+      setFaceBusy(false);
     }
   };
 
-  const deletePasskey = async (passkeyId: string): Promise<void> => {
-    setPasskeyRemovingId(passkeyId);
+  const deleteFaceSample = async (sampleId: string): Promise<void> => {
+    setFaceRemovingId(sampleId);
 
     try {
-      await authApi.delete(`/auth/passkeys/${passkeyId}`);
-      setPasskeys((prev) => prev.filter((item) => item.id !== passkeyId));
-      setStatusText("Acceso biometrico eliminado.");
+      await authApi.delete(`/auth/face-samples/${sampleId}`);
+      setFaceSamples((prev) => prev.filter((item) => item.id !== sampleId));
+      setStatusText("Foto facial eliminada.");
     } catch {
-      setStatusText("No fue posible eliminar el acceso biometrico.");
+      setStatusText("No fue posible eliminar la foto facial.");
     } finally {
-      setPasskeyRemovingId(null);
+      setFaceRemovingId(null);
     }
   };
 
@@ -2468,63 +2472,67 @@ export function AppPage() {
                 Reconocimiento facial
               </p>
               <h3 className="mt-3 text-lg font-semibold text-[var(--app-text)]">
-                Acceso biometrico del dispositivo
+                Fotos faciales para login demo
               </h3>
               <p className="mt-2 text-sm leading-6 text-[var(--app-subtle-text)]">
-                Habla Mas no guarda fotos de tu rostro. Tu telefono o computadora valida
-                Face ID, Windows Hello o biometria local y aqui solo registramos un passkey
-                seguro para entrar.
+                Registra varias selfies frontales desde esta camara. Luego, en el login, la app
+                intentara identificar automaticamente tu perfil comparando la nueva foto contra
+                estas muestras. Esto es solo para demo escolar.
               </p>
               <button
                 className="primary-button mt-4 w-full sm:w-auto"
-                disabled={passkeyBusy || !biometricSupported}
+                disabled={faceBusy || faceSamples.length >= 5}
                 onClick={() => {
-                  createPasskey().catch(() => undefined);
+                  setFaceCaptureOpen(true);
                 }}
                 type="button"
               >
-                {passkeyBusy ? "Activando..." : "Activar reconocimiento facial"}
+                {faceBusy ? "Guardando..." : "Tomar foto facial"}
               </button>
-              {!biometricSupported ? (
-                <p className="mt-3 text-xs text-amber-600">
-                  Este navegador o dispositivo no expone WebAuthn/biometria web.
-                </p>
-              ) : null}
+              <p className="mt-3 text-xs text-[var(--app-subtle-text)]">
+                Recomendado: entre 3 y 5 fotos con buena luz, de frente y con expresiones
+                ligeramente distintas.
+              </p>
               <div className="mt-4 space-y-3">
-                {passkeys.length > 0 ? (
-                  passkeys.map((item) => (
+                {faceSamples.length > 0 ? (
+                  faceSamples.map((item) => (
                     <div
                       className="flex flex-col gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-bg-strong)] p-4 sm:flex-row sm:items-center sm:justify-between"
                       key={item.id}
                     >
+                      <div className="flex items-center gap-3">
+                        <img
+                          alt="Muestra facial"
+                          className="h-16 w-16 rounded-2xl object-cover"
+                          src={item.imageUrl}
+                        />
+                        <div>
+                          <p className="font-semibold text-[var(--app-text)]">Muestra facial</p>
+                          <p className="mt-1 text-xs text-[var(--app-subtle-text)]">
+                            Capturada: {new Date(item.createdAt).toLocaleString()}
+                          </p>
+                        </div>
+                      </div>
                       <div>
-                        <p className="font-semibold text-[var(--app-text)]">{item.friendlyName}</p>
-                        <p className="mt-1 text-sm text-[var(--app-subtle-text)]">
-                          {item.deviceType}
-                          {item.isBackedUp ? " • sincronizado" : ""}
-                        </p>
                         <p className="mt-1 text-xs text-[var(--app-subtle-text)]">
-                          Creado: {new Date(item.createdAt).toLocaleString()}
-                          {item.lastUsedAt
-                            ? ` • Ultimo uso: ${new Date(item.lastUsedAt).toLocaleString()}`
-                            : ""}
+                          {faceSamples.length}/5 fotos registradas
                         </p>
                       </div>
                       <button
                         className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
-                        disabled={passkeyRemovingId === item.id}
+                        disabled={faceRemovingId === item.id}
                         onClick={() => {
-                          deletePasskey(item.id).catch(() => undefined);
+                          deleteFaceSample(item.id).catch(() => undefined);
                         }}
                         type="button"
                       >
-                        {passkeyRemovingId === item.id ? "Eliminando..." : "Eliminar"}
+                        {faceRemovingId === item.id ? "Eliminando..." : "Eliminar"}
                       </button>
                     </div>
                   ))
                 ) : (
                   <p className="rounded-2xl border border-dashed border-[var(--surface-border-strong)] px-4 py-4 text-sm text-[var(--app-subtle-text)]">
-                    Aun no tienes accesos biometricos registrados.
+                    Aun no tienes fotos faciales registradas.
                   </p>
                 )}
               </div>
@@ -2797,6 +2805,19 @@ export function AppPage() {
           ) : null}
         </main>
       </div>
+
+      <FaceCaptureModal
+        busy={faceBusy}
+        description="Toma una selfie frontal con buena iluminacion. Puedes repetir este proceso varias veces para entrenar mejor la demo."
+        onCapture={createFaceSample}
+        onClose={() => {
+          if (!faceBusy) {
+            setFaceCaptureOpen(false);
+          }
+        }}
+        open={faceCaptureOpen}
+        title="Registrar foto facial"
+      />
 
       {statusText ? (
         <div className="pointer-events-none absolute bottom-4 left-1/2 z-20 w-[min(calc(100%-2rem),34rem)] -translate-x-1/2 rounded-2xl bg-[var(--toast-bg)] px-4 py-3 text-sm font-medium text-[var(--toast-text)] shadow-[0_22px_50px_-26px_rgba(15,23,42,0.78)]">

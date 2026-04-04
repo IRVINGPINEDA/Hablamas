@@ -20,6 +20,7 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
     public DbSet<GroupChatMessage> GroupChatMessages => Set<GroupChatMessage>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
     public DbSet<AdminAuditLog> AdminAuditLogs => Set<AdminAuditLog>();
+    public DbSet<FaceLoginSample> FaceLoginSamples => Set<FaceLoginSample>();
     public DbSet<PasskeyCredential> PasskeyCredentials => Set<PasskeyCredential>();
 
     protected override void OnModelCreating(ModelBuilder builder)
@@ -161,6 +162,16 @@ public class AppDbContext : IdentityDbContext<AppUser, AppRole, Guid>
             entity.Property(x => x.Transports).HasMaxLength(120);
             entity.HasOne(x => x.User)
                 .WithMany(x => x.PasskeyCredentials)
+                .HasForeignKey(x => x.UserId)
+                .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        builder.Entity<FaceLoginSample>(entity =>
+        {
+            entity.HasIndex(x => x.UserId);
+            entity.Property(x => x.ImageUrl).HasMaxLength(500);
+            entity.HasOne(x => x.User)
+                .WithMany(x => x.FaceLoginSamples)
                 .HasForeignKey(x => x.UserId)
                 .OnDelete(DeleteBehavior.Cascade);
         });
