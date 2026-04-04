@@ -1,4 +1,4 @@
-import { getAccessToken } from "./storage";
+import { authApi } from "./api";
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL || "/api";
 
@@ -111,7 +111,7 @@ function credentialToRegistrationPayload(credential: PublicKeyCredential): unkno
     rawId: encodeBase64Url(credential.rawId),
     type: credential.type,
     response: {
-      clientDataJSON: encodeBase64Url(response.clientDataJSON),
+      clientDataJson: encodeBase64Url(response.clientDataJSON),
       attestationObject: encodeBase64Url(response.attestationObject)
     },
     clientExtensionResults: credential.getClientExtensionResults()
@@ -126,7 +126,7 @@ function credentialToAuthenticationPayload(credential: PublicKeyCredential): unk
     rawId: encodeBase64Url(credential.rawId),
     type: credential.type,
     response: {
-      clientDataJSON: encodeBase64Url(response.clientDataJSON),
+      clientDataJson: encodeBase64Url(response.clientDataJSON),
       authenticatorData: encodeBase64Url(response.authenticatorData),
       signature: encodeBase64Url(response.signature),
       userHandle: response.userHandle ? encodeBase64Url(response.userHandle) : null
@@ -170,16 +170,11 @@ export function isBiometricLoginSupported(): boolean {
 }
 
 export async function registerBiometricPasskey(friendlyName?: string): Promise<void> {
-  const accessToken = getAccessToken();
-  if (!accessToken) {
-    throw new Error("Tu sesion expiro. Inicia sesion otra vez.");
-  }
-
   if (!isBiometricLoginSupported()) {
     throw new Error("Este dispositivo o navegador no soporta acceso biometrico web.");
   }
 
-  const creationOptions = await requestJson<{
+  const optionsResponse = await authApi.post<{
     challenge: string;
     rp: PublicKeyCredentialRpEntity;
     user: { id: string; name: string; displayName: string };
@@ -192,7 +187,9 @@ export async function registerBiometricPasskey(friendlyName?: string): Promise<v
       type: PublicKeyCredentialType;
       transports?: AuthenticatorTransport[];
     }>;
-  }>("/auth/passkeys/register/options", { method: "POST", body: "{}" }, accessToken);
+  }>("/auth/passkeys/register/options");
+
+  const creationOptions = optionsResponse.data;
 
   const credential = (await navigator.credentials.create(
     normalizeCreationOptions(creationOptions)
@@ -202,13 +199,15 @@ export async function registerBiometricPasskey(friendlyName?: string): Promise<v
     throw new Error("No se pudo crear el acceso biometrico.");
   }
 
-  await requestJson("/auth/passkeys/register/verify", {
-    method: "POST",
-    body: JSON.stringify({
+  try {
+    await authApi.post("/auth/passkeys/register/verify", {
       friendlyName,
       credential: credentialToRegistrationPayload(credential)
-    })
-  }, accessToken);
+    });
+  } catch (error: unknown) {
+    const message = extractAxiosErrorMessage(error);
+    throw new Error(message);
+  }
 }
 
 export async function authenticateWithBiometricPasskey(email: string): Promise<{
@@ -263,4 +262,25 @@ export async function authenticateWithBiometricPasskey(email: string): Promise<{
       credential: credentialToAuthenticationPayload(credential)
     })
   });
+}
+
+function extractAxiosErrorMessage(error: unknown): string {
+  if (
+    typeof error === "object" &&
+    error !== null &&
+    "response" in error &&
+    typeof (error as { response?: unknown }).response === "object"
+  ) {
+    const response = (error as { response?: { data?: ApiProblemResponse } }).response;
+    const data = response?.data;
+    if (data?.detail || data?.title || data?.message) {
+      return data.detail || data.title || data.message || "No fue posible completar la operacion biometrica.";
+    }
+  }
+
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
+  return "No fue posible completar la operacion biometrica.";
 }
