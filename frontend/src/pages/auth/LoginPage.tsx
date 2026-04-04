@@ -14,12 +14,10 @@ interface ApiProblemResponse {
 }
 
 function extractLoginError(error: unknown): string {
-  if (error instanceof Error && error.message) {
-    return error.message;
-  }
-
   if (!axios.isAxiosError(error)) {
-    return "No fue posible iniciar sesion.";
+    return error instanceof Error && error.message
+      ? error.message
+      : "No fue posible iniciar sesion.";
   }
 
   if (!error.response) {

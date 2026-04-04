@@ -46,46 +46,49 @@ public sealed class FaceRecognitionDemoService
             return new FaceRecognitionMatchResult(null, 0, "No hay muestras faciales registradas.");
         }
 
-        var candidateList = candidates.ToList();
-        var batchResults = new List<FaceRecognitionMatchResult>();
+        var candidateResults = new List<FaceRecognitionMatchResult>();
 
-        foreach (var batch in candidateList.Chunk(4))
+        foreach (var candidate in candidates)
         {
-            var result = await EvaluateBatchAsync(contentType, base64Data, batch, cancellationToken);
+            var result = await EvaluateCandidateAsync(contentType, base64Data, candidate, cancellationToken);
             if (!string.IsNullOrWhiteSpace(result.MatchedUserId))
             {
-                batchResults.Add(result);
+                candidateResults.Add(result);
             }
         }
 
-        if (batchResults.Count == 0)
+        if (candidateResults.Count == 0)
         {
             return new FaceRecognitionMatchResult(null, 0, "La selfie no coincide claramente con ningun perfil.");
         }
 
-        if (batchResults.Count == 1)
+        var ordered = candidateResults
+            .OrderByDescending(x => x.Confidence)
+            .ToList();
+
+        if (ordered.Count == 1)
         {
-            return batchResults[0];
+            return ordered[0];
         }
 
-        var shortlistedIds = batchResults
-            .OrderByDescending(x => x.Confidence)
-            .Take(4)
-            .Select(x => x.MatchedUserId)
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        var best = ordered[0];
+        var secondBest = ordered[1];
 
-        var finalCandidates = candidateList
-            .Where(x => shortlistedIds.Contains(x.UserId))
-            .ToArray();
+        if (best.Confidence < 85 || best.Confidence - secondBest.Confidence < 8)
+        {
+            return new FaceRecognitionMatchResult(
+                null,
+                best.Confidence,
+                "La comparacion facial quedo demasiado cerrada entre varios perfiles.");
+        }
 
-        return await EvaluateBatchAsync(contentType, base64Data, finalCandidates, cancellationToken);
+        return best;
     }
 
-    private async Task<FaceRecognitionMatchResult> EvaluateBatchAsync(
+    private async Task<FaceRecognitionMatchResult> EvaluateCandidateAsync(
         string contentType,
         string base64Data,
-        IReadOnlyCollection<FaceRecognitionCandidate> candidates,
+        FaceRecognitionCandidate candidate,
         CancellationToken cancellationToken)
     {
         var userContent = new List<object>
@@ -96,12 +99,11 @@ public sealed class FaceRecognitionDemoService
                 text =
                     """
                     Analiza la primera imagen como selfie objetivo. Luego compara esa selfie contra las muestras de cada candidato.
-                    Tu tarea es identificar si la selfie pertenece claramente a una sola persona de la lista.
+                    Tu tarea es decidir si la selfie pertenece o no al candidato mostrado.
                     Responde solo JSON valido con esta forma exacta:
                     {"matchedUserId":"guid o null","confidence":0-100,"reason":"texto corto"}
                     Reglas:
                     - Si no hay coincidencia facial suficientemente clara, matchedUserId debe ser null.
-                    - Si hay duda entre dos personas, matchedUserId debe ser null.
                     - Usa confidence alta solo cuando el rostro parezca claramente la misma persona.
                     - Ignora ropa, fondo y calidad variable.
                     """
@@ -116,25 +118,22 @@ public sealed class FaceRecognitionDemoService
             }
         };
 
-        foreach (var candidate in candidates)
+        userContent.Add(new
+        {
+            type = "text",
+            text = $"CANDIDATE id={candidate.UserId} alias={candidate.PublicAlias}"
+        });
+
+        foreach (var imageReference in candidate.SampleImageUrls.Take(2))
         {
             userContent.Add(new
             {
-                type = "text",
-                text = $"CANDIDATE id={candidate.UserId} alias={candidate.PublicAlias}"
-            });
-
-            foreach (var imageReference in candidate.SampleImageUrls.Take(2))
-            {
-                userContent.Add(new
+                type = "image_url",
+                image_url = new
                 {
-                    type = "image_url",
-                    image_url = new
-                    {
-                        url = await NormalizeImageReferenceAsync(imageReference, cancellationToken)
-                    }
-                });
-            }
+                    url = await NormalizeImageReferenceAsync(imageReference, cancellationToken)
+                }
+            });
         }
 
         var payload = new
