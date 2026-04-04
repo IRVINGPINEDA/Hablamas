@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Text;
 using System.Text.Json;
 using HablaMas.Infrastructure.Options;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace HablaMas.Api.Services;
@@ -11,15 +12,21 @@ public sealed class FaceRecognitionDemoService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly OpenAiOptions _openAiOptions;
+    private readonly UploadOptions _uploadOptions;
+    private readonly string _appBaseUrl;
     private readonly ILogger<FaceRecognitionDemoService> _logger;
 
     public FaceRecognitionDemoService(
         IHttpClientFactory httpClientFactory,
         IOptions<OpenAiOptions> openAiOptions,
+        IOptions<UploadOptions> uploadOptions,
+        IConfiguration configuration,
         ILogger<FaceRecognitionDemoService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _openAiOptions = openAiOptions.Value;
+        _uploadOptions = uploadOptions.Value;
+        _appBaseUrl = configuration["APP_BASE_URL"]?.TrimEnd('/') ?? string.Empty;
         _logger = logger;
     }
 
@@ -39,6 +46,48 @@ public sealed class FaceRecognitionDemoService
             return new FaceRecognitionMatchResult(null, 0, "No hay muestras faciales registradas.");
         }
 
+        var candidateList = candidates.ToList();
+        var batchResults = new List<FaceRecognitionMatchResult>();
+
+        foreach (var batch in candidateList.Chunk(4))
+        {
+            var result = await EvaluateBatchAsync(contentType, base64Data, batch, cancellationToken);
+            if (!string.IsNullOrWhiteSpace(result.MatchedUserId))
+            {
+                batchResults.Add(result);
+            }
+        }
+
+        if (batchResults.Count == 0)
+        {
+            return new FaceRecognitionMatchResult(null, 0, "La selfie no coincide claramente con ningun perfil.");
+        }
+
+        if (batchResults.Count == 1)
+        {
+            return batchResults[0];
+        }
+
+        var shortlistedIds = batchResults
+            .OrderByDescending(x => x.Confidence)
+            .Take(4)
+            .Select(x => x.MatchedUserId)
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var finalCandidates = candidateList
+            .Where(x => shortlistedIds.Contains(x.UserId))
+            .ToArray();
+
+        return await EvaluateBatchAsync(contentType, base64Data, finalCandidates, cancellationToken);
+    }
+
+    private async Task<FaceRecognitionMatchResult> EvaluateBatchAsync(
+        string contentType,
+        string base64Data,
+        IReadOnlyCollection<FaceRecognitionCandidate> candidates,
+        CancellationToken cancellationToken)
+    {
         var userContent = new List<object>
         {
             new
@@ -75,12 +124,15 @@ public sealed class FaceRecognitionDemoService
                 text = $"CANDIDATE id={candidate.UserId} alias={candidate.PublicAlias}"
             });
 
-            foreach (var imageUrl in candidate.SampleImageUrls)
+            foreach (var imageReference in candidate.SampleImageUrls.Take(2))
             {
                 userContent.Add(new
                 {
                     type = "image_url",
-                    image_url = new { url = imageUrl }
+                    image_url = new
+                    {
+                        url = await NormalizeImageReferenceAsync(imageReference, cancellationToken)
+                    }
                 });
             }
         }
@@ -89,13 +141,42 @@ public sealed class FaceRecognitionDemoService
         {
             model = _openAiOptions.Model,
             temperature = 0,
+            response_format = new
+            {
+                type = "json_schema",
+                json_schema = new
+                {
+                    name = "face_match_result",
+                    strict = true,
+                    schema = new
+                    {
+                        type = "object",
+                        additionalProperties = false,
+                        properties = new
+                        {
+                            matchedUserId = new
+                            {
+                                type = new[] { "string", "null" }
+                            },
+                            confidence = new
+                            {
+                                type = "integer"
+                            },
+                            reason = new
+                            {
+                                type = "string"
+                            }
+                        },
+                        required = new[] { "matchedUserId", "confidence", "reason" }
+                    }
+                }
+            },
             messages = new object[]
             {
                 new
                 {
                     role = "system",
-                    content =
-                        "Eres un clasificador visual para una demo escolar privada. Devuelves solo JSON y nunca markdown."
+                    content = "Eres un clasificador visual para una demo escolar privada. Devuelves solo JSON y nunca markdown."
                 },
                 new
                 {
@@ -167,6 +248,60 @@ public sealed class FaceRecognitionDemoService
             _logger.LogWarning(ex, "Face recognition demo returned invalid JSON: {Reply}", reply);
             throw new FaceRecognitionProviderException(HttpStatusCode.BadGateway, "La respuesta del analizador facial no fue valida.");
         }
+    }
+
+    private async Task<string> NormalizeImageReferenceAsync(string imageReference, CancellationToken cancellationToken)
+    {
+        if (imageReference.StartsWith("data:", StringComparison.OrdinalIgnoreCase))
+        {
+            return imageReference;
+        }
+
+        var localPath = TryResolveLocalUploadPath(imageReference);
+        if (localPath is not null && File.Exists(localPath))
+        {
+            var bytes = await File.ReadAllBytesAsync(localPath, cancellationToken);
+            return $"data:{GetContentTypeFromPath(localPath)};base64,{Convert.ToBase64String(bytes)}";
+        }
+
+        return imageReference;
+    }
+
+    private string? TryResolveLocalUploadPath(string imageReference)
+    {
+        if (string.IsNullOrWhiteSpace(imageReference))
+        {
+            return null;
+        }
+
+        string? fileName = null;
+
+        if (imageReference.StartsWith("/uploads/", StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = Path.GetFileName(imageReference);
+        }
+        else if (!string.IsNullOrWhiteSpace(_appBaseUrl)
+                 && imageReference.StartsWith($"{_appBaseUrl}/uploads/", StringComparison.OrdinalIgnoreCase))
+        {
+            fileName = Path.GetFileName(new Uri(imageReference).AbsolutePath);
+        }
+
+        if (string.IsNullOrWhiteSpace(fileName))
+        {
+            return null;
+        }
+
+        return Path.Combine(_uploadOptions.Path, fileName);
+    }
+
+    private static string GetContentTypeFromPath(string path)
+    {
+        return Path.GetExtension(path).ToLowerInvariant() switch
+        {
+            ".png" => "image/png",
+            ".webp" => "image/webp",
+            _ => "image/jpeg"
+        };
     }
 
     private static string StripJsonFences(string value)
