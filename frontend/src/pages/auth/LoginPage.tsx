@@ -12,6 +12,10 @@ interface ApiProblemResponse {
 }
 
 function extractLoginError(error: unknown): string {
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+
   if (!axios.isAxiosError(error)) {
     return "No fue posible iniciar sesion.";
   }
@@ -39,7 +43,7 @@ function extractLoginError(error: unknown): string {
 }
 
 export function LoginPage( ) {
-  const { login } = useAuth();
+  const { login, loginWithPasskey } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -63,6 +67,36 @@ export function LoginPage( ) {
 
     try {
       const payload = await login(emailValue, passwordValue);
+
+      if (payload.mustChangePassword) {
+        navigate("/change-password", { replace: true });
+        return;
+      }
+
+      if (!payload.emailConfirmed) {
+        navigate("/verify-email", { replace: true });
+        return;
+      }
+
+      if (payload.roles.includes("Admin")) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+
+      navigate("/app", { replace: true });
+    } catch (requestError: unknown) {
+      setError(extractLoginError(requestError));
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const submitPasskey = async (): Promise<void> => {
+    setLoading(true);
+    setError(null);
+
+    try {
+      const payload = await loginWithPasskey(email);
 
       if (payload.mustChangePassword) {
         navigate("/change-password", { replace: true });
@@ -118,6 +152,16 @@ export function LoginPage( ) {
           />
           <button className="primary-button w-full" type="submit" disabled={loading}>
             {loading ? "Entrando..." : "Entrar"}
+          </button>
+          <button
+            className="w-full rounded-2xl border border-brand-300 px-4 py-3 text-sm font-semibold text-brand-700 transition hover:border-brand-500 hover:bg-brand-50 disabled:cursor-not-allowed disabled:opacity-60"
+            disabled={loading}
+            onClick={() => {
+              submitPasskey().catch(() => undefined);
+            }}
+            type="button"
+          >
+            Ingresar con reconocimiento facial
           </button>
           {error ? <p className="text-sm text-rose-600">{error}</p> : null}
         </form>

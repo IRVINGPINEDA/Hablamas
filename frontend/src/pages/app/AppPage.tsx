@@ -5,6 +5,7 @@ import { HubConnection, HubConnectionState } from "@microsoft/signalr";
 import { Link } from "react-router-dom";
 import { useAuth } from "../../context/AuthContext";
 import { authApi } from "../../lib/api";
+import { isBiometricLoginSupported, registerBiometricPasskey } from "../../lib/passkeys";
 import { createChatConnection } from "../../lib/signalr";
 import type {
   ChatAttachmentDto,
@@ -14,7 +15,8 @@ import type {
   GroupChatSummary,
   GroupMemberDto,
   GroupMessageDto,
-  MessageDto
+  MessageDto,
+  PasskeyCredentialSummary
 } from "../../types";
 
 interface ProfileForm {
@@ -905,6 +907,9 @@ export function AppPage() {
     theme: toThemeNumber(themeMode),
     accentColor: "#5f7888"
   });
+  const [passkeys, setPasskeys] = useState<PasskeyCredentialSummary[]>([]);
+  const [passkeyBusy, setPasskeyBusy] = useState(false);
+  const [passkeyRemovingId, setPasskeyRemovingId] = useState<string | null>(null);
   const [statusText, setStatusText] = useState<string | null>(null);
   const selectedConversationRef = useRef<string | null>(null);
   const connectionRef = useRef<HubConnection | null>(null);
@@ -938,6 +943,7 @@ export function AppPage() {
   const messagingPanel = panel === "chats" || panel === "groups";
   const composerEnabled = panel === "groups" ? Boolean(currentGroup) : Boolean(currentConversation);
   const canSendMessage = messageInput.trim().length > 0;
+  const biometricSupported = isBiometricLoginSupported();
 
   const activeMessages = useMemo(
     () => (panel === "groups" ? groupMessages : panel === "chats" ? messages : []),
@@ -1194,6 +1200,11 @@ export function AppPage() {
     setThemeMode(nextTheme);
   };
 
+  const loadPasskeys = async (): Promise<void> => {
+    const response = await authApi.get("/auth/passkeys");
+    setPasskeys(response.data as PasskeyCredentialSummary[]);
+  };
+
   const loadMessages = async (conversationId: string): Promise<void> => {
     const response = await authApi.get(`/chats/${conversationId}/messages?page=1&pageSize=70`);
     const items = response.data.items as MessageDto[];
@@ -1227,10 +1238,20 @@ export function AppPage() {
       return;
     }
 
-    Promise.all([loadSidebar(), loadGroups(), loadProfile()]).catch(() => {
+    Promise.all([loadSidebar(), loadGroups(), loadProfile(), loadPasskeys()]).catch(() => {
       setStatusText("No fue posible cargar la aplicacion.");
     });
   }, [user]);
+
+  useEffect(() => {
+    if (panel !== "profile") {
+      return;
+    }
+
+    loadPasskeys().catch(() => {
+      setStatusText("No fue posible cargar el acceso biometrico.");
+    });
+  }, [panel]);
 
   useEffect(() => {
     if (!selectedConversationId) {
@@ -1724,6 +1745,39 @@ export function AppPage() {
 
     await refreshProfile();
     setStatusText("Foto de perfil actualizada.");
+  };
+
+  const createPasskey = async (): Promise<void> => {
+    if (!biometricSupported) {
+      setStatusText("Este dispositivo o navegador no soporta acceso biometrico web.");
+      return;
+    }
+
+    setPasskeyBusy(true);
+
+    try {
+      await registerBiometricPasskey("Este dispositivo");
+      await loadPasskeys();
+      setStatusText("Acceso con reconocimiento facial activado.");
+    } catch (error: unknown) {
+      setStatusText(error instanceof Error ? error.message : "No fue posible activar el acceso biometrico.");
+    } finally {
+      setPasskeyBusy(false);
+    }
+  };
+
+  const deletePasskey = async (passkeyId: string): Promise<void> => {
+    setPasskeyRemovingId(passkeyId);
+
+    try {
+      await authApi.delete(`/auth/passkeys/${passkeyId}`);
+      setPasskeys((prev) => prev.filter((item) => item.id !== passkeyId));
+      setStatusText("Acceso biometrico eliminado.");
+    } catch {
+      setStatusText("No fue posible eliminar el acceso biometrico.");
+    } finally {
+      setPasskeyRemovingId(null);
+    }
   };
 
   const renderMessageContent = (message: ChatRenderableMessage) => {
@@ -2409,6 +2463,72 @@ export function AppPage() {
             <button className="primary-button mt-4 w-full sm:w-auto" type="submit">
               Guardar perfil
             </button>
+            <div className="mt-4 rounded-[28px] border border-[var(--muted-card-border)] bg-[var(--muted-card-bg)] p-4">
+              <p className="text-xs uppercase tracking-[0.2em] text-[var(--app-subtle-text)]">
+                Reconocimiento facial
+              </p>
+              <h3 className="mt-3 text-lg font-semibold text-[var(--app-text)]">
+                Acceso biometrico del dispositivo
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-[var(--app-subtle-text)]">
+                Habla Mas no guarda fotos de tu rostro. Tu telefono o computadora valida
+                Face ID, Windows Hello o biometria local y aqui solo registramos un passkey
+                seguro para entrar.
+              </p>
+              <button
+                className="primary-button mt-4 w-full sm:w-auto"
+                disabled={passkeyBusy || !biometricSupported}
+                onClick={() => {
+                  createPasskey().catch(() => undefined);
+                }}
+                type="button"
+              >
+                {passkeyBusy ? "Activando..." : "Activar reconocimiento facial"}
+              </button>
+              {!biometricSupported ? (
+                <p className="mt-3 text-xs text-amber-600">
+                  Este navegador o dispositivo no expone WebAuthn/biometria web.
+                </p>
+              ) : null}
+              <div className="mt-4 space-y-3">
+                {passkeys.length > 0 ? (
+                  passkeys.map((item) => (
+                    <div
+                      className="flex flex-col gap-3 rounded-2xl border border-[var(--surface-border)] bg-[var(--surface-bg-strong)] p-4 sm:flex-row sm:items-center sm:justify-between"
+                      key={item.id}
+                    >
+                      <div>
+                        <p className="font-semibold text-[var(--app-text)]">{item.friendlyName}</p>
+                        <p className="mt-1 text-sm text-[var(--app-subtle-text)]">
+                          {item.deviceType}
+                          {item.isBackedUp ? " • sincronizado" : ""}
+                        </p>
+                        <p className="mt-1 text-xs text-[var(--app-subtle-text)]">
+                          Creado: {new Date(item.createdAt).toLocaleString()}
+                          {item.lastUsedAt
+                            ? ` • Ultimo uso: ${new Date(item.lastUsedAt).toLocaleString()}`
+                            : ""}
+                        </p>
+                      </div>
+                      <button
+                        className="rounded-2xl border border-rose-200 px-4 py-2 text-sm font-semibold text-rose-600 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        disabled={passkeyRemovingId === item.id}
+                        onClick={() => {
+                          deletePasskey(item.id).catch(() => undefined);
+                        }}
+                        type="button"
+                      >
+                        {passkeyRemovingId === item.id ? "Eliminando..." : "Eliminar"}
+                      </button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="rounded-2xl border border-dashed border-[var(--surface-border-strong)] px-4 py-4 text-sm text-[var(--app-subtle-text)]">
+                    Aun no tienes accesos biometricos registrados.
+                  </p>
+                )}
+              </div>
+            </div>
           </form>
 
           <aside className="surface-panel p-4 sm:p-5">

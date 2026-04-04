@@ -1,5 +1,6 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { authApi } from "../lib/api";
+import { authenticateWithBiometricPasskey } from "../lib/passkeys";
 import { clearTokens, setAccessToken, setRefreshToken } from "../lib/storage";
 import type { AuthPayload, AuthUser } from "../types";
 
@@ -7,6 +8,7 @@ interface AuthContextValue {
   user: AuthUser | null;
   loading: boolean;
   login: (email: string, password: string) => Promise<AuthPayload>;
+  loginWithPasskey: (email: string) => Promise<AuthPayload>;
   logout: () => Promise<void>;
   refreshProfile: () => Promise<void>;
 }
@@ -75,6 +77,17 @@ export function AuthProvider({ children }: { children: ReactNode } ) {
     return payload;
   };
 
+  const loginWithPasskey = async (email: string): Promise<AuthPayload> => {
+    const payload = await authenticateWithBiometricPasskey(email);
+
+    setAccessToken(payload.accessToken);
+    setRefreshToken(payload.refreshToken);
+
+    await refreshProfile();
+
+    return payload;
+  };
+
   const logout = async (): Promise<void> => {
     try {
       await authApi.post("/auth/logout", {
@@ -93,10 +106,11 @@ export function AuthProvider({ children }: { children: ReactNode } ) {
       user,
       loading,
       login,
+      loginWithPasskey,
       logout,
       refreshProfile
     }),
-    [user, loading]
+    [user, loading, loginWithPasskey]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

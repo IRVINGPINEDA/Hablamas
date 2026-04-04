@@ -5,6 +5,7 @@ using HablaMas.Api.Services;
 using HablaMas.Infrastructure.Data;
 using HablaMas.Infrastructure.DependencyInjection;
 using HablaMas.Infrastructure.Options;
+using Fido2NetLib;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.HttpOverrides;
@@ -19,6 +20,7 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddProblemDetails();
 builder.Services.AddInfrastructure(builder.Configuration);
 builder.Services.AddSingleton<PresenceTracker>();
+builder.Services.AddScoped<PasskeyOperationStore>();
 builder.Services.AddHttpClient("openai", client =>
 {
     client.Timeout = TimeSpan.FromSeconds(120);
@@ -32,6 +34,13 @@ builder.Services
     });
 
 builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddFido2(options =>
+{
+    var (serverDomain, origins) = ResolvePasskeyOrigins(builder.Configuration);
+    options.ServerDomain = serverDomain;
+    options.ServerName = "Habla Mas";
+    options.Origins = origins;
+});
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
@@ -189,3 +198,28 @@ await using (var scope = app.Services.CreateAsyncScope())
 }
 
 app.Run();
+
+static (string ServerDomain, HashSet<string> Origins) ResolvePasskeyOrigins(IConfiguration configuration)
+{
+    var origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+    var serverDomain = "localhost";
+
+    var configuredBaseUrl = configuration["APP_BASE_URL"];
+    if (Uri.TryCreate(configuredBaseUrl, UriKind.Absolute, out var baseUri))
+    {
+        serverDomain = baseUri.Host;
+        origins.Add(baseUri.GetLeftPart(UriPartial.Authority));
+    }
+
+    foreach (var origin in new[]
+    {
+        "http://localhost:5173",
+        "http://localhost:4173",
+        "http://localhost:3000"
+    })
+    {
+        origins.Add(origin);
+    }
+
+    return (serverDomain, origins);
+}

@@ -29,6 +29,7 @@ public static class ServiceCollectionExtensions
 
         services.AddDbContext<AppDbContext>(options =>
             options.UseNpgsql(connectionString));
+        services.AddMemoryCache();
 
         services
             .AddIdentity<AppUser, AppRole>(options =>
